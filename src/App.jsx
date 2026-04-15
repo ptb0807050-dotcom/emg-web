@@ -1492,7 +1492,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 // --- MVIC 分析模組 ---
 const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [activeDataPoint, setActiveDataPoint] = useState(null);
+  // 移除影響效能的 activeDataPoint state
   const [errorMessage, setErrorMessage] = useState(null);
   const [toastMessage, setToastMessage] = useState(null); 
 
@@ -1739,30 +1739,35 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   };
 
   const handleMouseDown = useCallback((e) => {
-    if (e && e.activePayload) {
-      const clickX = e.activePayload[0].payload.sample;
-      if (isManualBaselineMode) {
-        setManualBaseStart(clickX);
-        setManualBaseEnd(clickX);
-        setIsSelectingBase(true);
-      } else {
-        const tolerance = analysisResult.chartData.length > 0 ? analysisResult.chartData[analysisResult.chartData.length - 1].sample * 0.05 : 100;
-        if (Math.abs(clickX - onsetSample) < tolerance) {
-          setIsDragging(true);
+    if (e) {
+      const clickX = e.activeLabel !== undefined ? e.activeLabel : (e.activePayload?.[0]?.payload?.sample);
+      if (clickX !== undefined && clickX !== null) {
+        if (isManualBaselineMode) {
+          setManualBaseStart(clickX);
+          setManualBaseEnd(clickX);
+          setIsSelectingBase(true);
+        } else {
+          // 放寬容錯值到 10% 或只要點擊圖表內任一處，就能把線直接吸附過去並開始拖曳
+          const maxSample = analysisResult?.chartData?.length > 0 ? analysisResult.chartData[analysisResult.chartData.length - 1].sample : 1000;
+          const tolerance = maxSample * 0.10; 
+          if (Math.abs(clickX - onsetSample) < tolerance) {
+            setOnsetSample(Math.max(0, clickX)); // 點擊時吸附
+            setIsDragging(true);
+          }
         }
       }
     }
   }, [onsetSample, analysisResult, isManualBaselineMode]);
 
   const handleChartMouseMove = useCallback((state) => {
-    if (state && state.activePayload) {
-      setActiveDataPoint(state.activePayload[0].payload);
-      const currentX = state.activePayload[0].payload.sample;
-      
-      if (isManualBaselineMode && isSelectingBase) {
-        setManualBaseEnd(currentX);
-      } else if (isDragging) {
-        setOnsetSample(Math.max(0, currentX));
+    if (state) {
+      const currentX = state.activeLabel !== undefined ? state.activeLabel : (state.activePayload?.[0]?.payload?.sample);
+      if (currentX !== undefined && currentX !== null) {
+        if (isManualBaselineMode && isSelectingBase) {
+          setManualBaseEnd(currentX);
+        } else if (isDragging) {
+          setOnsetSample(Math.max(0, currentX));
+        }
       }
     }
   }, [isDragging, isManualBaselineMode, isSelectingBase]);
@@ -1991,12 +1996,12 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                 <Waves size={18} className="text-slate-400 shrink-0" />
                 <span className="truncate">(1) 原始未處理信號 {headers.length > 0 ? `- ${headers[selectedColumnIndex]}` : ''}</span>
               </h3>
-              <div className="text-[11px] font-mono text-slate-500 w-[150px] text-right shrink-0 ml-2">
-                {activeDataPoint ? `X: ${activeDataPoint.sample} | Y: ${activeDataPoint.original} mV` : '\u00A0'}
+              <div className="text-[11px] font-bold text-slate-400 w-[150px] text-right shrink-0 ml-2">
+                游標懸停查看詳情
               </div>
             </div>
             
-            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'col-resize' : 'default') }}>
+            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
               {analysisResult ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={analysisResult.chartData} onMouseDown={handleMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleMouseUp} syncId={`emgSync-${chartKey}`}>
@@ -2011,9 +2016,9 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                     {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
                       <ReferenceArea x1={manualBaseStart} x2={manualBaseEnd} fill="#f59e0b" fillOpacity={0.3} />
                     )}
-                    <ReferenceLine x={onsetSample} stroke="#3b82f6" strokeWidth={2.5} style={{ cursor: 'ew-resize' }} label={{ value: `啟起點`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 11, fontWeight: 'bold' }} />
+                    <ReferenceLine x={onsetSample} stroke="#3b82f6" strokeWidth={2.5} style={{ cursor: 'ew-resize', pointerEvents: 'none' }} label={{ value: `啟動點`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 11, fontWeight: 'bold' }} />
 
-                    <Line type="monotone" dataKey="original" stroke="#94a3b8" strokeWidth={1} dot={false} isAnimationActive={true} animationDuration={500} />
+                    <Line type="monotone" dataKey="original" stroke="#94a3b8" strokeWidth={1} dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : <Placeholder error={errorMessage} />}
@@ -2026,12 +2031,12 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                 <Layers size={18} className="text-indigo-600 shrink-0" />
                 <span className="truncate">(2) 濾波整流與 LPF 包絡線</span>
               </h3>
-              <div className="text-[11px] font-mono text-indigo-600 font-bold w-[150px] text-right shrink-0 ml-2">
-                {activeDataPoint ? `X: ${activeDataPoint.sample} | Env: ${activeDataPoint.rms} mV` : '\u00A0'}
+              <div className="text-[11px] font-bold text-indigo-400 w-[150px] text-right shrink-0 ml-2">
+                游標懸停查看詳情
               </div>
             </div>
 
-            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'col-resize' : 'default') }}>
+            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
               {analysisResult ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={analysisResult.chartData} onMouseDown={handleMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleMouseUp} syncId={`emgSync-${chartKey}`}>
@@ -2052,11 +2057,11 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                     {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
                       <ReferenceArea x1={manualBaseStart} x2={manualBaseEnd} fill="#f59e0b" fillOpacity={0.3} />
                     )}
-                    <ReferenceLine x={onsetSample} stroke="#3b82f6" strokeWidth={2.5} style={{ cursor: 'ew-resize' }} label={{ value: `啟動起點`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 11, fontWeight: 'bold' }} />
+                    <ReferenceLine x={onsetSample} stroke="#3b82f6" strokeWidth={2.5} style={{ cursor: 'ew-resize', pointerEvents: 'none' }} label={{ value: `啟動點`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 11, fontWeight: 'bold' }} />
                     <ReferenceLine y={analysisResult.threshold} stroke="#ef4444" strokeDasharray="3 3" />
 
-                    <Area type="monotone" dataKey="processed" stroke="#e2e8f0" fill="url(#colorProc)" dot={false} strokeWidth={1} isAnimationActive={true} animationDuration={500} />
-                    <Line type="monotone" dataKey="rms" stroke="#4f46e5" strokeWidth={2} dot={false} isAnimationActive={true} animationDuration={500} />
+                    <Area type="monotone" dataKey="processed" stroke="#e2e8f0" fill="url(#colorProc)" dot={false} strokeWidth={1} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="rms" stroke="#4f46e5" strokeWidth={2} dot={false} isAnimationActive={false} />
                     
                     <Brush dataKey="sample" height={30} stroke="#94a3b8" fill="#f8fafc" travellerWidth={10} />
                   </AreaChart>
