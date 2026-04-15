@@ -1050,8 +1050,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   };
 
   const handleChartMouseDown = useCallback((e) => {
-    if (e && e.activePayload && analysisResult) {
-      const time = e.activePayload[0].payload.time;
+    if (e && analysisResult) {
+      const time = e.activeLabel !== undefined ? e.activeLabel : e.activePayload?.[0]?.payload?.time;
+      if (time === undefined || time === null) return;
       const cycle = analysisResult.cycles[selectedRepIdx];
       
       const dStart = Math.abs(time - cycle.tStart);
@@ -1059,7 +1060,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       const dEnd = Math.abs(time - cycle.tEnd);
       
       const minD = Math.min(dStart, dPeak, dEnd);
-      const tolerance = 0.5;
+      const tolerance = 1.0; // 放寬至 1 秒內皆可判定抓取
 
       if (minD < tolerance) {
         if (minD === dStart) setDraggingMarker('start');
@@ -1070,32 +1071,37 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   }, [analysisResult, selectedRepIdx]);
 
   const handleChartMouseMove = useCallback((e) => {
-    if (draggingMarker && e && e.activePayload && analysisResult) {
-      const time = e.activePayload[0].payload.time;
-      const newCycles = [...analysisResult.cycles];
-      const cycle = { ...newCycles[selectedRepIdx] };
-      
-      const idx = Math.floor(time * kinSR) + analysisResult.kinTrigIdx;
-      const maxIdx = kinFileResult[kinAngleColIdx].length - 1;
+    if (!draggingMarker) return;
+    if (e && e.activeLabel !== undefined) {
+       const time = e.activeLabel;
+       // 使用 callback 方式更新 state，避免重新建立函數參考導致圖表事件斷線
+       setAnalysisResult(prev => {
+          if (!prev) return prev;
+          const newCycles = [...prev.cycles];
+          const cycle = { ...newCycles[selectedRepIdx] };
 
-      if (draggingMarker === 'start') {
-         if (idx < cycle.peakIdx) { cycle.startIdx = Math.max(0, idx); cycle.tStart = time; }
-      } else if (draggingMarker === 'peak') {
-         if (idx > cycle.startIdx && idx < cycle.endIdx) { cycle.peakIdx = idx; cycle.tPeak = time; }
-      } else if (draggingMarker === 'end') {
-         if (idx > cycle.peakIdx) { cycle.endIdx = Math.min(maxIdx, idx); cycle.tEnd = time; }
-      }
-      
-      const updatedCycle = buildCycleMetrics(
-        cycle, emgSR, kinSR, kinFileResult[kinAngleColIdx], 
-        analysisResult.emgProcessed, kinMapping, kinFileResult,
-        analysisResult.kinTrigIdx
-      );
-      
-      newCycles[selectedRepIdx] = updatedCycle;
-      setAnalysisResult({ ...analysisResult, cycles: newCycles });
+          const idx = Math.floor(time * kinSR) + prev.kinTrigIdx;
+          const maxIdx = kinFileResult[kinAngleColIdx].length - 1;
+
+          if (draggingMarker === 'start') {
+             if (idx < cycle.peakIdx) { cycle.startIdx = Math.max(0, idx); cycle.tStart = time; }
+          } else if (draggingMarker === 'peak') {
+             if (idx > cycle.startIdx && idx < cycle.endIdx) { cycle.peakIdx = idx; cycle.tPeak = time; }
+          } else if (draggingMarker === 'end') {
+             if (idx > cycle.peakIdx) { cycle.endIdx = Math.min(maxIdx, idx); cycle.tEnd = time; }
+          }
+
+          const updatedCycle = buildCycleMetrics(
+            cycle, emgSR, kinSR, kinFileResult[kinAngleColIdx],
+            prev.emgProcessed, kinMapping, kinFileResult,
+            prev.kinTrigIdx
+          );
+
+          newCycles[selectedRepIdx] = updatedCycle;
+          return { ...prev, cycles: newCycles };
+       });
     }
-  }, [draggingMarker, analysisResult, selectedRepIdx, kinSR, emgSR, kinFileResult, kinAngleColIdx, kinMapping]);
+  }, [draggingMarker, selectedRepIdx, kinSR, emgSR, kinFileResult, kinAngleColIdx, kinMapping]);
 
   const handleChartMouseUp = useCallback(() => {
     setDraggingMarker(null);
@@ -1368,11 +1374,11 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
               <div className="flex items-center gap-4 text-xs font-bold">
                  <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#f59e0b] opacity-30 rounded-sm"></div> 上升階段 (Lift-up)</div>
                  <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#10b981] opacity-30 rounded-sm"></div> 下降階段 (Put-down)</div>
-                 <div className="flex items-center gap-1 ml-4 text-blue-500 border border-blue-200 px-2 py-1 rounded-md bg-blue-50"><Crosshair size={12}/> 提示：可拖曳圖中粗線微調區間</div>
+                 <div className="flex items-center gap-1 ml-4 text-blue-500 border border-blue-200 px-2 py-1 rounded-md bg-blue-50"><Crosshair size={12}/> 提示：可直接拖曳圖中標示線微調區間</div>
               </div>
             </div>
             
-            <div className="space-y-6" style={{ cursor: draggingMarker ? 'col-resize' : 'default' }}>
+            <div className="space-y-6 select-none" style={{ cursor: draggingMarker ? 'col-resize' : 'default' }} draggable={false}>
               <div>
                 <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-indigo-400">
                   <p className="text-xs font-bold text-slate-500">EMG 圖表預覽通道:</p>
@@ -1385,7 +1391,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                   </select>
                   <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
                 </div>
-                <div className="h-[220px] w-full">
+                <div className="h-[220px] w-full select-none" draggable={false}>
                   <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={analysisResult.chartData} syncId="liftingSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
                         <defs><linearGradient id="emgFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
@@ -1411,9 +1417,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                             if (cycle.angleTimes.t60_down) elements.push(<ReferenceLine key={`t60d-emg-${idx}`} x={cycle.angleTimes.t60_down} stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" />);
                             if (cycle.angleTimes.t30_down) elements.push(<ReferenceLine key={`t30d-emg-${idx}`} x={cycle.angleTimes.t30_down} stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" />);
 
-                            elements.push(<ReferenceLine key={`peak-emg-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize' }} label={{value:'Peak', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
-                            elements.push(<ReferenceLine key={`start-emg-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
-                            elements.push(<ReferenceLine key={`end-emg-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`peak-emg-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Peak', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`start-emg-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`end-emg-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
                           }
                           return elements;
                         })}
@@ -1436,7 +1442,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     </select>
                     <p className="text-xs font-bold text-slate-400 ml-1">與主判定基準 (Main Angle)</p>
                   </div>
-                  <div className="h-[280px] w-full">
+                  <div className="h-[280px] w-full select-none" draggable={false}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={analysisResult.chartData} syncId="liftingSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -1466,9 +1472,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                             if (cycle.angleTimes.t60_down) elements.push(<ReferenceLine key={`t60d-kin-${idx}`} x={cycle.angleTimes.t60_down} stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" label={{value:'Dn 60°', position:'insideTop', fill:'#10b981', fontSize:10}} />);
                             if (cycle.angleTimes.t30_down) elements.push(<ReferenceLine key={`t30d-kin-${idx}`} x={cycle.angleTimes.t30_down} stroke="#10b981" strokeWidth={1} strokeDasharray="3 3" label={{value:'Dn 30°', position:'insideTop', fill:'#10b981', fontSize:10}} />);
 
-                            elements.push(<ReferenceLine key={`peak-kin-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize' }} label={{value:'Peak', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
-                            elements.push(<ReferenceLine key={`start-kin-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
-                            elements.push(<ReferenceLine key={`end-kin-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`peak-kin-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Peak', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`start-kin-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`end-kin-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
                           }
                           return elements;
                         })}
@@ -1492,7 +1498,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 // --- MVIC 分析模組 ---
 const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [analysisResult, setAnalysisResult] = useState(null);
-  // 移除影響效能的 activeDataPoint state
   const [errorMessage, setErrorMessage] = useState(null);
   const [toastMessage, setToastMessage] = useState(null); 
 
@@ -1518,6 +1523,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [headers, setHeaders] = useState([]);
   const [selectedColumnIndex, setSelectedColumnIndex] = useState(1); 
   const [chartKey, setChartKey] = useState(0);
+  
   const [onsetSample, setOnsetSample] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -1738,6 +1744,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // 將 MVIC 的 MouseDown 與 MouseMove 拔除依賴，避免觸發 Recharts 不斷重新註冊事件
   const handleMouseDown = useCallback((e) => {
     if (e) {
       const clickX = e.activeLabel !== undefined ? e.activeLabel : (e.activePayload?.[0]?.payload?.sample);
@@ -1747,19 +1754,16 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
           setManualBaseEnd(clickX);
           setIsSelectingBase(true);
         } else {
-          // 放寬容錯值到 10% 或只要點擊圖表內任一處，就能把線直接吸附過去並開始拖曳
-          const maxSample = analysisResult?.chartData?.length > 0 ? analysisResult.chartData[analysisResult.chartData.length - 1].sample : 1000;
-          const tolerance = maxSample * 0.10; 
-          if (Math.abs(clickX - onsetSample) < tolerance) {
-            setOnsetSample(Math.max(0, clickX)); // 點擊時吸附
-            setIsDragging(true);
-          }
+          // 極大化容錯體驗：只要不是手動框選模式，在圖表上任意處點擊就會直接把線吸附過去並開始拖曳！
+          setOnsetSample(Math.max(0, clickX));
+          setIsDragging(true);
         }
       }
     }
-  }, [onsetSample, analysisResult, isManualBaselineMode]);
+  }, [isManualBaselineMode]); 
 
   const handleChartMouseMove = useCallback((state) => {
+    if (!isDragging && !(isManualBaselineMode && isSelectingBase)) return;
     if (state) {
       const currentX = state.activeLabel !== undefined ? state.activeLabel : (state.activePayload?.[0]?.payload?.sample);
       if (currentX !== undefined && currentX !== null) {
@@ -1997,11 +2001,12 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                 <span className="truncate">(1) 原始未處理信號 {headers.length > 0 ? `- ${headers[selectedColumnIndex]}` : ''}</span>
               </h3>
               <div className="text-[11px] font-bold text-slate-400 w-[150px] text-right shrink-0 ml-2">
-                游標懸停查看詳情
+                游標懸停可查看數值
               </div>
             </div>
             
-            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
+            {/* 強制加入 select-none 避免瀏覽器選取反白干擾拖曳，且設定 isAnimationActive={false} 提升效能 */}
+            <div className="h-[320px] w-full select-none" draggable={false} style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
               {analysisResult ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={analysisResult.chartData} onMouseDown={handleMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleMouseUp} syncId={`emgSync-${chartKey}`}>
@@ -2032,11 +2037,11 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
                 <span className="truncate">(2) 濾波整流與 LPF 包絡線</span>
               </h3>
               <div className="text-[11px] font-bold text-indigo-400 w-[150px] text-right shrink-0 ml-2">
-                游標懸停查看詳情
+                游標懸停可查看數值
               </div>
             </div>
 
-            <div className="h-[320px] w-full" style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
+            <div className="h-[320px] w-full select-none" draggable={false} style={{ cursor: isManualBaselineMode ? 'crosshair' : (isDragging ? 'ew-resize' : 'default') }}>
               {analysisResult ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={analysisResult.chartData} onMouseDown={handleMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleMouseUp} syncId={`emgSync-${chartKey}`}>
