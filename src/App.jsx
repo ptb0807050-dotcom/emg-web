@@ -10,7 +10,7 @@ import {
   Home, ArrowLeft, ArrowUpRight, ArrowRight, Music, 
   ListMusic, Database, FolderOpen, PlaySquare,
   Save, Edit2, Trash2, Download, FileSpreadsheet,
-  Settings2, Link, Eye, User, UserPlus
+  Settings2, Link, Eye, User, UserPlus, Users, CheckCircle
 } from 'lucide-react';
 
 // --- 全域常數與設定 ---
@@ -2249,6 +2249,127 @@ const ModulePlaceholder = ({ title, icon, description, onBack }) => (
   </div>
 );
 
+// --- 所有個案總覽 (Global Overview) 模組 ---
+const GlobalDatabaseOverview = ({ subjects, setSubjects, activeSubjectId, setActiveSubjectId, onBack }) => {
+  const getMvicProgress = (mvicData) => {
+    let full = 0;
+    let partial = 0;
+    MUSCLE_LIST.forEach(m => {
+      if (mvicData[m]?.length === 3) full++;
+      else if (mvicData[m]?.length > 0) partial++;
+    });
+    return { full, partial, total: MUSCLE_LIST.length };
+  };
+
+  const getTaskCount = (data) => Object.keys(data).filter(k => data[k] && data[k].length > 0).length;
+
+  const handleDelete = (id) => {
+    if (Object.keys(subjects).length <= 1) {
+      alert("至少必須保留一位受測者！");
+      return;
+    }
+    if (window.confirm(`確定要刪除「${id}」的所有資料嗎？\n\n此操作無法復原！`)) {
+      const newSubjects = { ...subjects };
+      delete newSubjects[id];
+      setSubjects(newSubjects);
+      // 如果刪除的是當前選擇的受測者，則自動切換至清單中的第一位
+      if (activeSubjectId === id) {
+        setActiveSubjectId(Object.keys(newSubjects)[0]);
+      }
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-800 animate-in fade-in duration-500 relative">
+      <header className="max-w-7xl mx-auto flex items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6">
+        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-800">
+          <ArrowLeft size={24} />
+        </button>
+        <div className="bg-purple-500 p-3 rounded-2xl shadow-lg text-white">
+          <Users className="w-6 h-6" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">所有個案數據總覽</h1>
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mt-1">Global Subject Overview</p>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-sm">
+              <tr>
+                <th className="p-5">受測者編號 (Subject ID)</th>
+                <th className="p-5">MVIC 完成度</th>
+                <th className="p-5">Lifting 任務資料</th>
+                <th className="p-5">其他動態任務</th>
+                <th className="p-5 text-center">操作與管理</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-slate-100">
+              {Object.entries(subjects).map(([id, data]) => {
+                const isActive = id === activeSubjectId;
+                const mvicProg = getMvicProgress(data.mvicData);
+                const liftEmgCnt = getTaskCount(data.taskLiftEmgData);
+                const liftKinCnt = getTaskCount(data.taskLiftAngleData);
+                const otherTaskCnt = getTaskCount(data.taskOpenStringData) + getTaskCount(data.taskScaleData) + getTaskCount(data.taskMusicData);
+
+                return (
+                  <tr key={id} className={`hover:bg-slate-50/80 transition-colors ${isActive ? 'bg-indigo-50/40' : ''}`}>
+                    <td className="p-5">
+                      <div className="flex items-center gap-3">
+                        {isActive ? <CheckCircle size={18} className="text-indigo-600" /> : <div className="w-4 h-4 rounded-full border-2 border-slate-300"></div>}
+                        <span className={`font-bold ${isActive ? 'text-indigo-800 text-base' : 'text-slate-700'}`}>{id}</span>
+                        {isActive && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-bold">目前使用中</span>}
+                      </div>
+                    </td>
+                    <td className="p-5">
+                       <div className="flex flex-col gap-1">
+                         <div className="flex items-center gap-2">
+                           <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden w-24">
+                              <div className={`h-full ${mvicProg.full === mvicProg.total ? 'bg-emerald-500' : 'bg-indigo-400'}`} style={{ width: `${(mvicProg.full / mvicProg.total) * 100}%` }}></div>
+                           </div>
+                           <span className={`text-xs font-bold ${mvicProg.full === mvicProg.total ? 'text-emerald-600' : 'text-slate-600'}`}>
+                             {mvicProg.full}/{mvicProg.total} 肌肉
+                           </span>
+                         </div>
+                         {mvicProg.partial > 0 && <span className="text-[10px] text-amber-600 font-bold">({mvicProg.partial} 肌肉僅部分完成)</span>}
+                       </div>
+                    </td>
+                    <td className="p-5">
+                      <div className="flex flex-col gap-1 text-xs">
+                        <span className={liftEmgCnt > 0 ? 'text-indigo-600 font-bold' : 'text-slate-400'}>EMG: {liftEmgCnt} 通道</span>
+                        <span className={liftKinCnt > 0 ? 'text-emerald-600 font-bold' : 'text-slate-400'}>Kinematics: {liftKinCnt} 關節</span>
+                      </div>
+                    </td>
+                    <td className="p-5">
+                       <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${otherTaskCnt > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
+                          共 {otherTaskCnt} 筆延伸任務
+                       </span>
+                    </td>
+                    <td className="p-5">
+                      <div className="flex items-center justify-center gap-2">
+                        {!isActive && (
+                          <button onClick={() => setActiveSubjectId(id)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors shadow-sm">
+                            切換至此個案
+                          </button>
+                        )}
+                        <button onClick={() => handleDelete(id)} className="p-2 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors" title="刪除此受測者">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  );
+};
+
 // --- 主應用程式 (Router 與狀態共享層) ---
 const getEmptySubjectData = () => ({
   mvicData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}),
@@ -2263,12 +2384,52 @@ const App = () => {
   const [currentView, setCurrentView] = useState('home');
   const [isExporting, setIsExporting] = useState(false);
   
-  // 受測者狀態管理
-  const [subjects, setSubjects] = useState({
-    'Subject_01': getEmptySubjectData()
+  // 受測者狀態管理 (加入 localStorage 持久化機制)
+  const [subjects, setSubjects] = useState(() => {
+    try {
+      const localData = localStorage.getItem('emgAppSubjects');
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        // 確保向下相容 (若未來有新增的資料結構可以自動補上)
+        const safeParsed = {};
+        Object.keys(parsed).forEach(key => {
+          safeParsed[key] = { ...getEmptySubjectData(), ...parsed[key] };
+        });
+        return safeParsed;
+      }
+    } catch (e) {
+      console.error("載入本地資料失敗", e);
+    }
+    return { 'Subject_01': getEmptySubjectData() };
   });
-  const [activeSubjectId, setActiveSubjectId] = useState('Subject_01');
+
+  const [activeSubjectId, setActiveSubjectId] = useState(() => {
+    try {
+      const localId = localStorage.getItem('emgAppActiveSubject');
+      return localId || 'Subject_01';
+    } catch (e) {
+      return 'Subject_01';
+    }
+  });
+
   const [newSubjectName, setNewSubjectName] = useState('');
+
+  // 監聽並自動儲存至 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('emgAppSubjects', JSON.stringify(subjects));
+    } catch (err) {
+      console.error("儲存本地資料失敗 (可能資料量過大):", err);
+    }
+  }, [subjects]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('emgAppActiveSubject', activeSubjectId);
+    } catch (err) {
+      console.error("儲存本地資料失敗:", err);
+    }
+  }, [activeSubjectId]);
 
   const handleAddSubject = () => {
     if (!newSubjectName.trim()) return;
@@ -2532,6 +2693,20 @@ const App = () => {
                 <UserPlus size={16} /> 新增
               </button>
             </div>
+            <button 
+              onClick={() => {
+                if(window.confirm('確定要清除所有受測者與歷史資料嗎？\n\n此操作將清空瀏覽器中的暫存資料庫且無法復原！')) {
+                  localStorage.removeItem('emgAppSubjects');
+                  localStorage.removeItem('emgAppActiveSubject');
+                  setSubjects({ 'Subject_01': getEmptySubjectData() });
+                  setActiveSubjectId('Subject_01');
+                }
+              }} 
+              className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-2.5 rounded-xl text-sm font-bold transition-all shrink-0 shadow-sm"
+              title="清除所有暫存資料庫"
+            >
+              <Trash2 size={18} />
+            </button>
           </div>
         </section>
 
@@ -2568,7 +2743,7 @@ const App = () => {
               {isExporting ? <Activity className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} {isExporting ? '生成 Excel 中...' : '批次匯出全部受測者 (SPSS 相容)'}
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div onClick={() => setCurrentView('result_mvic')} className="bg-slate-900 p-6 rounded-3xl border border-slate-800 hover:border-emerald-500 hover:shadow-xl transition-all cursor-pointer group relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-10"><Database size={100} /></div>
               <div className="flex justify-between items-center mb-4 relative z-10">
@@ -2585,6 +2760,14 @@ const App = () => {
               </div>
               <h3 className="text-lg font-bold text-white mb-1 relative z-10">任務數據總表</h3><p className="text-xs text-slate-400 relative z-10">包含舉手、空弦、音階與樂曲等動態任務之分析成果彙整。</p>
             </div>
+            <div onClick={() => setCurrentView('result_overview')} className="bg-slate-900 p-6 rounded-3xl border border-slate-800 hover:border-purple-500 hover:shadow-xl transition-all cursor-pointer group relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10"><Users size={100} /></div>
+              <div className="flex justify-between items-center mb-4 relative z-10">
+                <div className="bg-slate-800 w-12 h-12 rounded-2xl flex items-center justify-center group-hover:bg-purple-500 transition-colors"><Layers className="text-purple-400 group-hover:text-white transition-colors" /></div>
+                <span className="text-xs font-mono text-purple-400 bg-purple-900/50 px-2 py-1 rounded-md border border-purple-800/50">Global Overview</span>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1 relative z-10">所有個案總覽</h3><p className="text-xs text-slate-400 relative z-10">全局檢視所有受測者進度、資料完整度，與跨受測者狀態管理。</p>
+            </div>
           </div>
         </section>
       </main>
@@ -2599,6 +2782,8 @@ const App = () => {
     case 'task_openstring': return <ModulePlaceholder title="空弦分析" description="Open String Task Analysis" icon={<Music size={32} />} onBack={() => setCurrentView('home')} />;
     case 'task_scale': return <ModulePlaceholder title="音階分析" description="Scale Task Analysis" icon={<ListMusic size={32} />} onBack={() => setCurrentView('home')} />;
     case 'task_music': return <ModulePlaceholder title="樂曲分析" description="Musical Piece Task Analysis" icon={<PlaySquare size={32} />} onBack={() => setCurrentView('home')} />;
+    case 'result_overview':
+      return <GlobalDatabaseOverview subjects={subjects} setSubjects={setSubjects} activeSubjectId={activeSubjectId} setActiveSubjectId={setActiveSubjectId} onBack={() => setCurrentView('home')} />;
     case 'result_task': 
       return <TaskDatabase 
                activeSubjectId={activeSubjectId}
