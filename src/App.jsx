@@ -41,9 +41,9 @@ const SIDE_MAPPINGS = {
       { key: 'RScapUpDownRotation', label: 'RScapUpDownRotation', regex: /RScapUpDownRotation|RScapUpDown/i },
       { key: 'RScapAntPosTilt', label: 'RScapAntPosTilt', regex: /RScapAntPosTilt|RScapAntPos/i },
       { key: 'RScapIntExtRotation', label: 'RScapIntExtRotation', regex: /RScapIntExtRotation|RScapIntExt/i },
-      { key: 'CervicalF./E.', label: 'CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
-      { key: 'CervicalRot.', label: 'CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
-      { key: 'CervicalSB.', label: 'CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
+      { key: '[Right] CervicalF./E.', label: '[Right] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
+      { key: '[Right] CervicalRot.', label: '[Right] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
+      { key: '[Right] CervicalSB.', label: '[Right] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
     ]
   },
   Left: {
@@ -54,9 +54,9 @@ const SIDE_MAPPINGS = {
       { key: 'LScapUpDownRotation', label: 'LScapUpDownRotation', regex: /LScapUpDownRotation|LScapUpDown/i },
       { key: 'LScapAntPosTilt', label: 'LScapAntPosTilt', regex: /LScapAntPosTilt|LScapAntPos/i },
       { key: 'LScapIntExtRotation', label: 'LScapIntExtRotation', regex: /LScapIntExtRotation|LScapIntExt/i },
-      { key: 'CervicalF./E.', label: 'CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
-      { key: 'CervicalRot.', label: 'CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
-      { key: 'CervicalSB.', label: 'CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
+      { key: '[Left] CervicalF./E.', label: '[Left] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
+      { key: '[Left] CervicalRot.', label: '[Left] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
+      { key: '[Left] CervicalSB.', label: '[Left] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
     ]
   }
 };
