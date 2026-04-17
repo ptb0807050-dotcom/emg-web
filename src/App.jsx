@@ -896,8 +896,8 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     let currentStartIdx = firstOnsetIdx;
 
-    // 優化：加入最短時間限制 (過濾假動作)，並防止相同結束點重複加入
-    while (currentStartIdx < kinAngleData.length - 1 && detectedCycles.length < 3) {
+    // 修改：移除長度 < 3 的限制，尋找全域所有符合標準的動作，且略過小幅度雜訊
+    while (currentStartIdx < kinAngleData.length - 1) {
       let peakIdx = currentStartIdx;
       let maxAngle = kinAngleData[currentStartIdx];
       for (let i = currentStartIdx + 1; i < kinAngleData.length; i++) {
@@ -921,11 +921,10 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
       if (maxAngle - kinAngleData[currentStartIdx] >= 15 && durationSamples > minDurationSamples) {
         detectedCycles.push({ startIdx: currentStartIdx, peakIdx: peakIdx, endIdx: endIdx });
-      } else if (maxAngle - kinAngleData[currentStartIdx] < 15) { 
-        break; 
-      }
+      } 
+      // 略過 else if break，讓小動作直接被跳過
       
-      if (endIdx === peakIdx || endIdx >= kinAngleData.length - 1) { break; }
+      if (endIdx <= currentStartIdx || endIdx >= kinAngleData.length - 1) { break; }
       currentStartIdx = endIdx;
     }
 
