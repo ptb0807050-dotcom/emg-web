@@ -490,10 +490,18 @@ const TaskDatabase = ({
 
   const confirmClear = () => {
     const currentTaskActions = tasks[activeTask];
-    if (modal.type === 'emg') {
-      currentTaskActions.setEmg(prev => ({ ...prev, [modal.target]: [] }));
+    if (modal.target === 'ALL') {
+      if (modal.type === 'emg') {
+        currentTaskActions.setEmg(MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}));
+      } else {
+        currentTaskActions.setAngle({});
+      }
     } else {
-      currentTaskActions.setAngle(prev => ({ ...prev, [modal.target]: [] }));
+      if (modal.type === 'emg') {
+        currentTaskActions.setEmg(prev => ({ ...prev, [modal.target]: [] }));
+      } else {
+        currentTaskActions.setAngle(prev => ({ ...prev, [modal.target]: [] }));
+      }
     }
     setModal({ isOpen: false, target: '', type: '' });
   };
@@ -515,7 +523,11 @@ const TaskDatabase = ({
           <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm animate-in zoom-in-95 duration-200">
             <h3 className="text-xl font-bold text-slate-900 mb-2">清空任務數據</h3>
             <p className="text-sm text-slate-600 mb-6 mt-4">
-              確定要清空 <span className="font-bold text-rose-600">{modal.target}</span> 的所有儲存數據嗎？此操作無法復原。
+              {modal.target === 'ALL' ? (
+                <>確定要清空 <strong>{tasks[activeTask].name} ({modal.type === 'emg' ? 'EMG' : '觀察角度'})</strong> 的<span className="font-bold text-rose-600">所有</span>儲存數據嗎？<br/><br/>此操作無法復原。</>
+              ) : (
+                <>確定要清空 <span className="font-bold text-rose-600">{modal.target}</span> 的所有儲存數據嗎？此操作無法復原。</>
+              )}
             </p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setModal({ isOpen: false, target: '', type: '' })} className="px-5 py-2.5 rounded-xl text-slate-500 hover:bg-slate-100 font-bold transition-colors">取消</button>
@@ -556,19 +568,29 @@ const TaskDatabase = ({
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-3 pb-2">
-          <button 
-            onClick={() => setActiveTab('emg')} 
-            className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'emg' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 border border-slate-200'}`}
-          >
-            <Activity size={18} /> EMG 肌肉活化數據
-          </button>
-          <button 
-            onClick={() => setActiveTab('angle')} 
-            className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'angle' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 border border-slate-200'}`}
-          >
-            <Eye size={18} /> 觀察關節角度數據
-          </button>
+        <div className="flex justify-between items-center pb-2">
+          <div className="flex flex-wrap gap-3">
+            <button 
+              onClick={() => setActiveTab('emg')} 
+              className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'emg' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 border border-slate-200'}`}
+            >
+              <Activity size={18} /> EMG 肌肉活化數據
+            </button>
+            <button 
+              onClick={() => setActiveTab('angle')} 
+              className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'angle' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 border border-slate-200'}`}
+            >
+              <Eye size={18} /> 觀察關節角度數據
+            </button>
+          </div>
+          {displayKeys.length > 0 && (
+            <button 
+              onClick={() => handleClear('ALL', activeTab)} 
+              className="text-sm text-rose-500 hover:text-rose-600 flex items-center gap-1 font-bold px-4 py-2 rounded-xl hover:bg-rose-50 transition-colors shadow-sm border border-rose-100 bg-white active:scale-95"
+            >
+              <Trash2 size={16} /> 清空{activeTab === 'emg' ? '所有肌肉' : '所有角度'}數據
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden min-h-[400px]">
