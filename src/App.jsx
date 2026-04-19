@@ -602,7 +602,8 @@ const TaskDatabase = ({
                     if (activeTask === 'lifting') {
                       phases = activeTab === 'emg' 
                         ? ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30']
-                        : ['Up_30', 'Up_60', 'Up_90', 'Down_90', 'Down_60', 'Down_30'];
+                        // Added Up_120 and Down_120 to angle phases
+                        : ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
                     }
                     
                     return phases.map((phase, pIdx) => {
@@ -823,10 +824,13 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
           if (idx === null || idx >= extraData.length) return '';
           return +(extraData[idx]).toFixed(2);
         };
+        // Added Up_120 and Down_120 to kinematic points extraction
         kinPointsAll[key] = {
           'Up_30': getKinValue(i30_up),
           'Up_60': getKinValue(i60_up),
           'Up_90': getKinValue(i90_up),
+          'Up_120': getKinValue(i120_up),
+          'Down_120': getKinValue(i120_down),
           'Down_90': getKinValue(i90_down),
           'Down_60': getKinValue(i60_down),
           'Down_30': getKinValue(i30_down)
@@ -896,7 +900,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     let currentStartIdx = firstOnsetIdx;
 
-    // 修改：移除長度 < 3 的限制，尋找全域所有符合標準的動作，且略過小幅度雜訊
+    // 優化：移除長度 < 3 的限制，尋找全域所有符合標準的動作，且略過小幅度雜訊
     while (currentStartIdx < kinAngleData.length - 1) {
       let peakIdx = currentStartIdx;
       let maxAngle = kinAngleData[currentStartIdx];
@@ -922,7 +926,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       if (maxAngle - kinAngleData[currentStartIdx] >= 15 && durationSamples > minDurationSamples) {
         detectedCycles.push({ startIdx: currentStartIdx, peakIdx: peakIdx, endIdx: endIdx });
       } 
-      // 略過 else if break，讓小動作直接被跳過
       
       if (endIdx <= currentStartIdx || endIdx >= kinAngleData.length - 1) { break; }
       currentStartIdx = endIdx;
@@ -1059,7 +1062,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       const dEnd = Math.abs(time - cycle.tEnd);
       
       const minD = Math.min(dStart, dPeak, dEnd);
-      const tolerance = 1.0; // 放寬至 1 秒內皆可判定抓取
+      const tolerance = 1.0; 
 
       if (minD < tolerance) {
         if (minD === dStart) setDraggingMarker('start');
@@ -1073,7 +1076,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
     if (!draggingMarker) return;
     if (e && e.activeLabel !== undefined) {
        const time = e.activeLabel;
-       // 使用 callback 方式更新 state，避免重新建立函數參考導致圖表事件斷線
        setAnalysisResult(prev => {
           if (!prev) return prev;
           const newCycles = [...prev.cycles];
@@ -1125,7 +1127,8 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
   const currentMetrics = analysisResult?.cycles[selectedRepIdx];
   const emgKeys = ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30'];
-  const kinKeys = ['Up_30', 'Up_60', 'Up_90', 'Down_90', 'Down_60', 'Down_30'];
+  // Add Up_120 and Down_120 to kinematic preview panel
+  const kinKeys = ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-800 animate-in fade-in duration-500 relative" onMouseUp={handleChartMouseUp} onMouseLeave={handleChartMouseUp}>
@@ -1278,7 +1281,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
             <div className="bg-gradient-to-r from-indigo-600 to-emerald-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row justify-between items-center mb-6">
               <div className="mb-4 md:mb-0">
                 <h3 className="font-black text-xl flex items-center gap-2"><Database size={24} /> 批次寫入資料庫 (Batch Save)</h3>
-                <p className="text-sm text-indigo-100 mt-1 font-medium">將目前切分好的 5 個肌肉 RMS 區間與 6 個關節瞬時點，一次性完整儲存至當前受測者。</p>
+                <p className="text-sm text-indigo-100 mt-1 font-medium">將目前切分好的 5 個肌肉 RMS 區間與 8 個關節瞬時點，一次性完整儲存至當前受測者。</p>
               </div>
               <button onClick={handleBatchSave} className="bg-white text-indigo-800 px-8 py-3 rounded-2xl font-black shadow-xl hover:scale-105 active:scale-95 transition-all whitespace-nowrap">
                 一鍵全通道儲存
@@ -1323,25 +1326,25 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                 </div>
               </div>
 
-              {/* Kinematics Preview Block */}
+              {/* Kinematics Preview Block (Expanded to grid-cols-4 for 8 items) */}
               <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
                 <div className="absolute -right-6 -top-6 text-emerald-500/10"><Eye size={100} /></div>
                 <div>
                   <div className="flex justify-between items-start mb-4 relative z-10">
                     <div>
                       <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2"><Eye size={18} className="text-emerald-600"/> 觀察關節預覽</h3>
-                      <p className="text-xs text-emerald-600 font-medium mt-1">下拉切換欲預覽之關節 (全部關節都會在點擊儲存時寫入)</p>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">包含 120° 角度點</p>
                     </div>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
                       {SIDE_MAPPINGS[taskSide].kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   
-                  <div className="grid grid-cols-3 gap-2 mb-2 relative z-10">
+                  <div className="grid grid-cols-4 gap-2 mb-2 relative z-10">
                     {kinKeys.map(phase => (
                       <div key={phase} className="bg-white rounded-xl p-2 text-center border border-emerald-100 shadow-sm">
                         <div className={`text-[10px] font-bold mb-1 ${phase.includes('Up') ? 'text-amber-500' : 'text-emerald-500'}`}>{phase.replace('_', ' ')}°</div>
-                        <div className="text-sm font-black font-mono text-emerald-700">{currentMetrics.kinPointsAll?.[previewKinKey]?.[phase] || '-'}</div>
+                        <div className="text-[12px] font-black font-mono text-emerald-700">{currentMetrics.kinPointsAll?.[previewKinKey]?.[phase] || '-'}</div>
                       </div>
                     ))}
                   </div>
@@ -2569,7 +2572,7 @@ const App = () => {
         const savedKeys = Object.keys(dataObj).filter(k => dataObj[k].length > 0);
         if (savedKeys.length === 0) return;
 
-        const phases = ['Up_30', 'Up_60', 'Up_90', 'Down_90', 'Down_60', 'Down_30'];
+        const phases = ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
         savedKeys.forEach(key => {
           const trials = dataObj[key] || [];
           const row = { Subject: subjectId, Channel: key };
