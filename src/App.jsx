@@ -61,7 +61,7 @@ const SIDE_MAPPINGS = {
   }
 };
 
-// --- 動態載入 Excel (SheetJS) 函式庫 (優化：單一實例 Promise 防止重複載入) ---
+// --- 動態載入 Excel (SheetJS) 函式庫 ---
 let xlsxLoadPromise = null;
 const loadXLSX = () => {
   if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -71,7 +71,7 @@ const loadXLSX = () => {
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
       s.onload = () => resolve(window.XLSX);
       s.onerror = () => {
-        xlsxLoadPromise = null; // 失敗時允許重試
+        xlsxLoadPromise = null;
         reject(new Error('無法載入 Excel 匯出模組，請檢查網路連線'));
       };
       document.head.appendChild(s);
@@ -92,7 +92,6 @@ const calcSD = (arr, mean) => {
   return Math.sqrt(variance);
 };
 
-// 實作 2階 Butterworth Biquad 濾波器 (優化：確保輸入為 Float64Array 提升效能)
 const biquadFilter = (data, type, cutoff, sampleRate) => {
   const input = data instanceof Float64Array ? data : Float64Array.from(data);
   const omega = 2 * Math.PI * cutoff / sampleRate;
@@ -145,13 +144,11 @@ const biquadFilter = (data, type, cutoff, sampleRate) => {
   return output;
 };
 
-// 帶通濾波器：使用串聯的高通與低通 Butterworth
 const bandpassFilter = (data, lowCutoff = 30, highCutoff = 450, sampleRate = 1000) => {
   const hpFiltered = biquadFilter(data, 'highpass', lowCutoff, sampleRate);
   return biquadFilter(hpFiltered, 'lowpass', highCutoff, sampleRate);
 };
 
-// 優化：回傳新陣列，不直接 mutate 原陣列
 const linearInterpolate = (arr) => {
   const n = arr.length;
   const out = new Float64Array(n);
@@ -602,7 +599,7 @@ const TaskDatabase = ({
                     if (activeTask === 'lifting') {
                       phases = activeTab === 'emg' 
                         ? ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30']
-                        // Added Up_120 and Down_120 to angle phases
+                        // Added Up_120 and Down_120 to angle phases here as well
                         : ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
                     }
                     
@@ -824,7 +821,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
           if (idx === null || idx >= extraData.length) return '';
           return +(extraData[idx]).toFixed(2);
         };
-        // Added Up_120 and Down_120 to kinematic points extraction
+        // Make sure Up_120 and Down_120 are saved in the data object
         kinPointsAll[key] = {
           'Up_30': getKinValue(i30_up),
           'Up_60': getKinValue(i60_up),
@@ -1127,7 +1124,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
   const currentMetrics = analysisResult?.cycles[selectedRepIdx];
   const emgKeys = ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30'];
-  // Add Up_120 and Down_120 to kinematic preview panel
   const kinKeys = ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
 
   return (
