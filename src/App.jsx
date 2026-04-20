@@ -83,7 +83,7 @@ const loadXLSX = () => {
 // --- 數位信號處理 (DSP) 與數學工具函數 ---
 
 // Hampel Filter (中位數異常剔除法) - 用於消除線材晃動或靜電放電產生的一柱擎天突波
-const hampelFilter = (data, windowSize = 5, nSigmas = 3) => {
+const hampelFilter = (data, windowSize = 50, nSigmas = 3) => {
   const n = data.length;
   const out = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -98,9 +98,8 @@ const hampelFilter = (data, windowSize = 5, nSigmas = 3) => {
 
     const absDevs = window.map(val => Math.abs(val - median)).sort((a, b) => a - b);
     const mad = absDevs[Math.floor(absDevs.length / 2)];
-    const threshold = nSigmas * mad * 1.4826; // 1.4826 是使 MAD 成為標準差一致估計量的常數
+    const threshold = nSigmas * mad * 1.4826; 
 
-    // 如果該點偏差大於設定閥值，以中位數取代削平，否則保留原值
     if (Math.abs(data[i] - median) > threshold) {
       out[i] = median;
     } else {
@@ -749,6 +748,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   const [lpfCutoff, setLpfCutoff] = useState(20); 
   
   const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
+  const [hampelWindow, setHampelWindow] = useState(50); // 新增 Hampel Window 參數
+  const [hampelSigma, setHampelSigma] = useState(3.0);  // 新增 Hampel Sigma 參數
+
   const [notchFilter, setNotchFilter] = useState(true);
   const [ecgFilter, setEcgFilter] = useState(false);
 
@@ -990,7 +992,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       if (colIdx !== -1 && emgFileResult[colIdx]) {
         let raw = emgFileResult[colIdx];
         if (useHampel) {
-          raw = hampelFilter(raw, 5, 3); // 執行 Hampel Filter 去突波
+          raw = hampelFilter(raw, hampelWindow, hampelSigma); // 執行 Hampel Filter 去突波
         }
         if (notchFilter) {
           raw = biquadFilter(raw, 'notch', 60, emgSR);
@@ -1250,6 +1252,14 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
                       <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波(Hampel)
                     </label>
+                    {useHampel && (
+                      <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
+                        <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
+                        <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
+                        <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
+                        <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="閥值倍數"/>
+                      </div>
+                    )}
                     <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
                       <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
                     </label>
@@ -1573,6 +1583,8 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [appliedBaseline, setAppliedBaseline] = useState(null);
   
   const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
+  const [hampelWindow, setHampelWindow] = useState(50);
+  const [hampelSigma, setHampelSigma] = useState(3.0);
   const [notchFilter, setNotchFilter] = useState(true);
   const [ecgFilter, setEcgFilter] = useState(false);
 
@@ -1677,7 +1689,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
 
     let rawData = data;
     if (useHampel) {
-      rawData = hampelFilter(rawData, 5, 3); // 執行 Hampel Filter 去突波
+      rawData = hampelFilter(rawData, hampelWindow, hampelSigma); // 執行 Hampel Filter 去突波
     }
     if (notchFilter) {
       rawData = biquadFilter(rawData, 'notch', 60, samplingRate);
@@ -1895,58 +1907,46 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
             </button>
           </div>
 
+          <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex gap-3">
+            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
+              <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波
+            </label>
+            {useHampel && (
+              <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
+                <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
+                <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小 (樣本數)"/>
+                <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
+                <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="判定異常的標準差倍數"/>
+              </div>
+            )}
+            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
+              <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
+            </label>
+            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="動態提升 High-pass 至 30Hz 濾除心跳突波">
+              <input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG
+            </label>
+          </div>
+
           <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
-            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">Bandpass:</span>
+            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">二次濾波(LPF):</span>
             <input 
               type="number" 
-              value={bpHigh} 
-              onChange={(e) => setBpHigh(Number(e.target.value))}
+              value={lpfCutoff} 
+              onChange={(e) => setLpfCutoff(Number(e.target.value))}
               className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
-              title="高通頻率 (Hz)"
-            />
-            <span className="text-xs text-slate-400 mx-1">-</span>
-            <input 
-              type="number" 
-              value={bpLow} 
-              onChange={(e) => setBpLow(Number(e.target.value))}
-              className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
-              title="低通頻率 (Hz)"
+              title="取代原本RMS，等同於LabVIEW的翻正後二次濾波"
             />
             <span className="text-xs text-slate-400 ml-1">Hz</span>
-        </div>
+          </div>
 
-        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex gap-3">
-          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
-            <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波
-          </label>
-          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
-            <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
-          </label>
-          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="動態提升 High-pass 至 30Hz 濾除心跳突波">
-            <input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG
-          </label>
-        </div>
-
-        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
-          <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">二次濾波(LPF):</span>
-          <input 
-            type="number" 
-            value={lpfCutoff} 
-            onChange={(e) => setLpfCutoff(Number(e.target.value))}
-            className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
-            title="取代原本RMS，等同於LabVIEW的翻正後二次濾波"
-          />
-          <span className="text-xs text-slate-400 ml-1">Hz</span>
-        </div>
-
-        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
-          <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">採樣率:</span>
-            <input 
-              type="number" 
-              value={samplingRate} 
-              onChange={(e) => setSamplingRate(parseInt(e.target.value))}
-              className="w-14 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none"
-            />
+          <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
+            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">採樣率:</span>
+              <input 
+                type="number" 
+                value={samplingRate} 
+                onChange={(e) => setSamplingRate(parseInt(e.target.value))}
+                className="w-14 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none"
+              />
           </div>
           
           <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
