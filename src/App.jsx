@@ -81,6 +81,35 @@ const loadXLSX = () => {
 };
 
 // --- 數位信號處理 (DSP) 與數學工具函數 ---
+
+// Hampel Filter (中位數異常剔除法) - 用於消除線材晃動或靜電放電產生的一柱擎天突波
+const hampelFilter = (data, windowSize = 5, nSigmas = 3) => {
+  const n = data.length;
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const start = Math.max(0, i - windowSize);
+    const end = Math.min(n - 1, i + windowSize);
+    const window = [];
+    for (let j = start; j <= end; j++) {
+      window.push(data[j]);
+    }
+    window.sort((a, b) => a - b);
+    const median = window[Math.floor(window.length / 2)];
+
+    const absDevs = window.map(val => Math.abs(val - median)).sort((a, b) => a - b);
+    const mad = absDevs[Math.floor(absDevs.length / 2)];
+    const threshold = nSigmas * mad * 1.4826; // 1.4826 是使 MAD 成為標準差一致估計量的常數
+
+    // 如果該點偏差大於設定閥值，以中位數取代削平，否則保留原值
+    if (Math.abs(data[i] - median) > threshold) {
+      out[i] = median;
+    } else {
+      out[i] = data[i];
+    }
+  }
+  return out;
+};
+
 const calcMean = (arr) => {
   if (!arr || arr.length === 0) return 0;
   return arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -719,6 +748,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   const [bpLow, setBpLow] = useState(450);
   const [lpfCutoff, setLpfCutoff] = useState(20); 
   
+  const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
   const [notchFilter, setNotchFilter] = useState(true);
   const [ecgFilter, setEcgFilter] = useState(false);
 
@@ -959,6 +989,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
     Object.entries(emgMapping).forEach(([key, colIdx]) => {
       if (colIdx !== -1 && emgFileResult[colIdx]) {
         let raw = emgFileResult[colIdx];
+        if (useHampel) {
+          raw = hampelFilter(raw, 5, 3); // 執行 Hampel Filter 去突波
+        }
         if (notchFilter) {
           raw = biquadFilter(raw, 'notch', 60, emgSR);
         }
@@ -1213,7 +1246,10 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     <span className="text-[10px] font-semibold text-slate-500">SR (Hz):</span>
                     <input type="number" value={emgSR} onChange={e=>setEmgSR(Number(e.target.value))} className="w-16 p-1 rounded-lg border border-slate-200 text-xs font-bold text-center bg-white" />
                   </div>
-                  <div className="col-span-2 flex items-center justify-between gap-1 mt-1">
+                  <div className="col-span-2 flex flex-wrap items-center justify-start gap-2 mt-1">
+                    <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
+                      <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波(Hampel)
+                    </label>
                     <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
                       <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
                     </label>
@@ -1536,6 +1572,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [baselineLength, setBaselineLength] = useState(2000); 
   const [appliedBaseline, setAppliedBaseline] = useState(null);
   
+  const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
   const [notchFilter, setNotchFilter] = useState(true);
   const [ecgFilter, setEcgFilter] = useState(false);
 
@@ -1639,6 +1676,9 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
     setErrorMessage(null);
 
     let rawData = data;
+    if (useHampel) {
+      rawData = hampelFilter(rawData, 5, 3); // 執行 Hampel Filter 去突波
+    }
     if (notchFilter) {
       rawData = biquadFilter(rawData, 'notch', 60, samplingRate);
     }
@@ -1876,6 +1916,9 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
         </div>
 
         <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex gap-3">
+          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
+            <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波
+          </label>
           <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
             <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
           </label>
@@ -2238,9 +2281,9 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
           <div>
             <h4 className="text-indigo-400 font-bold text-xs uppercase tracking-widest mb-4">分析演算法說明 (與 LabVIEW 同步)</h4>
             <div className="space-y-3 text-sm text-slate-400">
-              <p>• <b>處理流程</b>：原始信號 → 2階 Butterworth 帶通濾波 (Bandpass) → 全波整流 (絕對值) → 2階 Butterworth 低通濾波平滑 (LPF, 二次濾波)。</p>
+              <p>• <b>處理流程</b>：原始信號 → <b>Hampel 異常剔除(可選)</b> → 2階 Butterworth 帶通濾波 → 全波整流 → 2階 Butterworth 低通濾波平滑 (LPF, 二次濾波)。</p>
               <p>• <b>自動定位</b>：取前 2000 個 Sample (或自訂區間) 作為靜態基準，以 $Mean + {sdMultiplier} \times SD$ 為啟動閥值，且需<b>連續 {consecutiveSamples} 筆</b>超過閥值才判定為啟動。圖表上的藍色粗線代表此起點。</p>
-              <p>• <b>數值計算</b>：提取目標秒數區間之數據，並使用與 LabVIEW 完全相同的公式計算其<b>均方根 (Root Mean Square, RMS)</b>。</p>
+              <p>• <b>Hampel Filter (中位數異常剔除法)</b>：有效削平因線材晃動或靜電放電所產生的一柱擎天脈衝突波，避免在濾波後產生「振鈴效應(Ringing)」導致錯誤的高波包絡線誤判起點。</p>
             </div>
           </div>
           <div>
