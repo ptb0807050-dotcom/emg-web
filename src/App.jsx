@@ -509,8 +509,8 @@ const TaskDatabase = ({
   taskMusicData, setTaskMusicData,
   onBack 
 }) => {
-  const [activeTask, setActiveTask] = useState('lifting'); // 'lifting' | 'openstring' | 'scale' | 'music'
-  const [activeTab, setActiveTab] = useState('emg'); // 'emg' | 'angle'
+  const [activeTask, setActiveTask] = useState('lifting'); 
+  const [activeTab, setActiveTab] = useState('emg'); 
   const [modal, setModal] = useState({ isOpen: false, target: '', type: '' });
 
   const tasks = {
@@ -851,15 +851,15 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     const emgSegmentsAll = {};
     Object.entries(emgProcessedMap).forEach(([key, data]) => {
-      // 統一擷取「二次濾波 LPF (envelope)」作為代表值計算
+      // 【修改】：LabVIEW RMS 邏輯 - 擷取 "帶通濾波後" (data.filtered) 進行 RMS 計算，而非 LPF
       const calcEmgSegment = (sIdx, eIdx) => {
         if (sIdx === null || eIdx === null || sIdx >= eIdx) return '';
         const emgStart = Math.max(0, Math.floor((sIdx - kinTIdx) / localKinSR * localEmgSR));
-        const emgEnd = Math.min(data.envelope.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
+        const emgEnd = Math.min(data.filtered.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
         
         let sumSq = 0, countRms = 0;
-        for(let i = emgStart; i <= emgEnd && i < data.envelope.length; i++) { 
-          sumSq += Math.pow(data.envelope[i], 2); 
+        for(let i = emgStart; i <= emgEnd && i < data.filtered.length; i++) { 
+          sumSq += Math.pow(data.filtered[i], 2); 
           countRms++; 
         }
         return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '';
@@ -1008,7 +1008,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
         const rectified = new Float64Array(filtered.length);
         for(let i=0; i<filtered.length; i++) rectified[i] = Math.abs(filtered[i]);
         const envelope = biquadFilter(rectified, 'lowpass', lpfCutoff, emgSR); 
-        emgProcessed[key] = { filtered, envelope };
+        emgProcessed[key] = { filtered, envelope }; // 同時保存 filtered (算RMS) 與 envelope (畫圖用)
       }
     });
 
@@ -1172,7 +1172,8 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
     if (!previewEmgKey || !analysisResult.emgProcessed[previewEmgKey]) return '-';
     
     const cycle = analysisResult.cycles[selectedRepIdx];
-    const emgData = analysisResult.emgProcessed[previewEmgKey].envelope; // 統一使用 envelope 預覽
+    // 改回使用 filtered 進行預覽整體 RMS 計算
+    const emgData = analysisResult.emgProcessed[previewEmgKey].filtered; 
     const emgStart = Math.max(0, Math.floor((cycle.startIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
     const emgEnd = Math.min(emgData.length - 1, Math.floor((cycle.endIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
     
@@ -1260,7 +1261,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     {useHampel && (
                       <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
                         <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
-                        <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-10 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
+                        <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
                         <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
                         <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="閥值倍數"/>
                       </div>
@@ -1395,7 +1396,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                 </div>
               </div>
 
-              {/* Kinematics Preview Block */}
+              {/* Kinematics Preview Block (Expanded to grid-cols-4 for 8 items) */}
               <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
                 <div className="absolute -right-6 -top-6 text-emerald-500/10"><Eye size={100} /></div>
                 <div>
@@ -1763,7 +1764,8 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
 
     setAnalysisResult({
       chartData,
-      fullRms: rmsEnvelope,
+      fullRms: rmsEnvelope, // 保留 envelope 給圖表畫線和 Peak 計算用
+      filteredSignal: filtered, // 【更新】：保留「帶通濾波後的交流訊號」提供嚴謹的 RMS 數學運算
       baselineMean: baselineMean,
       threshold: Math.round(threshold * 10000) / 10000
     });
@@ -1780,16 +1782,18 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
     
     if (safeEnd <= safeStart) return null;
     
-    const stableWindow = analysisResult.fullRms.slice(safeStart, safeEnd);
-    if (stableWindow.length === 0) return null;
-
-    // 此處依然維持將這段二次濾波(LPF包絡線)計算 RMS 以呈現最終代表數值
-    const sumSq = stableWindow.reduce((acc, val) => acc + Math.pow(val, 2), 0);
-    const finalRMS = Math.sqrt(sumSq / stableWindow.length);
+    const stableWindowEnv = analysisResult.fullRms.slice(safeStart, safeEnd);
+    const stableWindowFiltered = analysisResult.filteredSignal.slice(safeStart, safeEnd);
     
-    const meanEnv = stableWindow.reduce((a, b) => a + b, 0) / stableWindow.length;
-    const peakRMS = Math.max(...stableWindow);
-    const sdRMS = Math.sqrt(stableWindow.reduce((s, v) => s + Math.pow(v - meanEnv, 2), 0) / stableWindow.length);
+    if (stableWindowEnv.length === 0 || stableWindowFiltered.length === 0) return null;
+
+    // 【修改】：LabVIEW RMS 邏輯 - 擷取 "帶通濾波後" (filtered) 的區間進行真正的 RMS 計算
+    const sumSq = stableWindowFiltered.reduce((acc, val) => acc + Math.pow(val, 2), 0);
+    const finalRMS = Math.sqrt(sumSq / stableWindowFiltered.length);
+    
+    const meanEnv = stableWindowEnv.reduce((a, b) => a + b, 0) / stableWindowEnv.length;
+    const peakRMS = Math.max(...stableWindowEnv);
+    const sdRMS = Math.sqrt(stableWindowEnv.reduce((s, v) => s + Math.pow(v - meanEnv, 2), 0) / stableWindowEnv.length);
     const cv = meanEnv > 0 ? (sdRMS / meanEnv) * 100 : 0;
     const snr = 20 * Math.log10(finalRMS / (analysisResult.baselineMean || 0.001));
 
@@ -2307,7 +2311,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
           <div>
             <h4 className="text-indigo-400 font-bold text-xs uppercase tracking-widest mb-4">分析演算法說明 (與 LabVIEW 同步)</h4>
             <div className="space-y-3 text-sm text-slate-400">
-              <p>• <b>處理流程</b>：原始信號 → <b>Hampel 異常剔除(可選)</b> → 2階 Butterworth 帶通濾波 → 全波整流 → 2階 Butterworth 低通濾波平滑 (LPF, 二次濾波)。</p>
+              <p>• <b>處理流程</b>：原始信號 → Hampel 異常剔除(可選) → 2階 Butterworth 帶通濾波 → <b>提取目標區間計算 RMS</b>。 (系統另外分支做全波整流與 LPF，僅用於畫面畫圖與自動定位起點)。</p>
               <p>• <b>自動定位</b>：取前 2000 個 Sample (或自訂區間) 作為靜態基準，以 $Mean + {sdMultiplier} \times SD$ 為啟動閥值，且需<b>連續 {consecutiveSamples} 筆</b>超過閥值才判定為啟動。圖表上的藍色粗線代表此起點。</p>
               <p>• <b>Hampel Filter (中位數異常剔除法)</b>：有效削平因線材晃動或靜電放電所產生的一柱擎天脈衝突波，避免在濾波後產生「振鈴效應(Ringing)」導致錯誤的高波包絡線誤判起點。</p>
             </div>
