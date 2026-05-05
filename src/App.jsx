@@ -120,49 +120,56 @@ const calcSD = (arr, mean) => {
   return Math.sqrt(variance);
 };
 
+/**
+ * 【學術對齊更新】精確雙線性轉換的 2階 Butterworth 數位濾波器
+ * 100% 貼齊 LabVIEW "Butterworth Filter.vi" 與 MATLAB "butter" 的運算結果。
+ * 採用標準的 Pre-warping 頻率預變形: W = tan(pi * fc / fs)
+ */
 const biquadFilter = (data, type, cutoff, sampleRate) => {
   const input = data instanceof Float64Array ? data : Float64Array.from(data);
-  const omega = 2 * Math.PI * cutoff / sampleRate;
-  const cosW = Math.cos(omega);
-  let alpha;
-  let b0, b1, b2, a0, a1, a2;
+  const n = input.length;
+  const output = new Float64Array(n);
+
+  let b0, b1, b2, a1, a2;
 
   if (type === 'notch') {
-    const q = 10; 
-    alpha = Math.sin(omega) / (2 * q);
-    b0 = 1;
-    b1 = -2 * cosW;
-    b2 = 1;
-    a0 = 1 + alpha;
-    a1 = -2 * cosW;
-    a2 = 1 - alpha;
+    // 陷波器維持高 Q 值設計
+    const w0 = 2 * Math.PI * cutoff / sampleRate;
+    const alpha = Math.sin(w0) / (2 * 10); // Q = 10
+    const cosW = Math.cos(w0);
+    const a0 = 1 + alpha;
+    
+    b0 = 1 / a0;
+    b1 = (-2 * cosW) / a0;
+    b2 = 1 / a0;
+    a1 = (-2 * cosW) / a0;
+    a2 = (1 - alpha) / a0;
   } else {
-    alpha = Math.sin(omega) / (2 * 0.7071); 
+    // 標準 Butterworth Pre-warping 係數計算
+    const W = Math.tan(Math.PI * cutoff / sampleRate);
+    const W2 = W * W;
+    const sqrt2W = Math.SQRT2 * W;
+    const D0 = 1 + sqrt2W + W2;
+    
+    a1 = (2 * (W2 - 1)) / D0;
+    a2 = (1 - sqrt2W + W2) / D0;
+
     if (type === 'lowpass') {
-      b0 = (1 - cosW) / 2;
-      b1 = 1 - cosW;
-      b2 = (1 - cosW) / 2;
-      a0 = 1 + alpha;
-      a1 = -2 * cosW;
-      a2 = 1 - alpha;
+      b0 = W2 / D0;
+      b1 = (2 * W2) / D0;
+      b2 = W2 / D0;
     } else if (type === 'highpass') {
-      b0 = (1 + cosW) / 2;
-      b1 = -(1 + cosW);
-      b2 = (1 + cosW) / 2;
-      a0 = 1 + alpha;
-      a1 = -2 * cosW;
-      a2 = 1 - alpha;
+      b0 = 1 / D0;
+      b1 = -2 / D0;
+      b2 = 1 / D0;
     } else {
       return input;
     }
   }
 
-  b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
-
-  const output = new Float64Array(input.length);
+  // IIR 濾波迴圈運算 (Direct Form 1)
   let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-
-  for (let i = 0; i < input.length; i++) {
+  for (let i = 0; i < n; i++) {
     const x0 = input[i];
     const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
     output[i] = y0;
@@ -172,6 +179,7 @@ const biquadFilter = (data, type, cutoff, sampleRate) => {
   return output;
 };
 
+// 帶通濾波器：使用串聯的高通 (2階) 與低通 (2階) Butterworth，總和形成 4階系統，與 LabVIEW Bandpass 邏輯相符
 const bandpassFilter = (data, lowCutoff = 30, highCutoff = 450, sampleRate = 1000) => {
   const hpFiltered = biquadFilter(data, 'highpass', lowCutoff, sampleRate);
   return biquadFilter(hpFiltered, 'lowpass', highCutoff, sampleRate);
@@ -649,7 +657,6 @@ const TaskDatabase = ({
                     if (activeTask === 'lifting') {
                       phases = activeTab === 'emg' 
                         ? ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30']
-                        // Added Up_120 and Down_120 to angle phases here as well
                         : ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
                     }
                     
@@ -747,9 +754,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   const [bpLow, setBpLow] = useState(450);
   const [lpfCutoff, setLpfCutoff] = useState(20); 
   
-  const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
-  const [hampelWindow, setHampelWindow] = useState(50); // 新增 Hampel Window 參數
-  const [hampelSigma, setHampelSigma] = useState(3.0);  // 新增 Hampel Sigma 參數
+  const [useHampel, setUseHampel] = useState(false);
+  const [hampelWindow, setHampelWindow] = useState(50); 
+  const [hampelSigma, setHampelSigma] = useState(3.0);  
 
   const [notchFilter, setNotchFilter] = useState(true);
   const [ecgFilter, setEcgFilter] = useState(false);
@@ -844,14 +851,15 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     const emgSegmentsAll = {};
     Object.entries(emgProcessedMap).forEach(([key, data]) => {
+      // 統一擷取「二次濾波 LPF (envelope)」作為代表值計算
       const calcEmgSegment = (sIdx, eIdx) => {
         if (sIdx === null || eIdx === null || sIdx >= eIdx) return '';
         const emgStart = Math.max(0, Math.floor((sIdx - kinTIdx) / localKinSR * localEmgSR));
-        const emgEnd = Math.min(data.filtered.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
+        const emgEnd = Math.min(data.envelope.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
         
         let sumSq = 0, countRms = 0;
-        for(let i = emgStart; i <= emgEnd && i < data.filtered.length; i++) { 
-          sumSq += Math.pow(data.filtered[i], 2); 
+        for(let i = emgStart; i <= emgEnd && i < data.envelope.length; i++) { 
+          sumSq += Math.pow(data.envelope[i], 2); 
           countRms++; 
         }
         return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '';
@@ -875,7 +883,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
           if (idx === null || idx >= extraData.length) return '';
           return +(extraData[idx]).toFixed(2);
         };
-        // Make sure Up_120 and Down_120 are saved in the data object
         kinPointsAll[key] = {
           'Up_30': getKinValue(i30_up),
           'Up_60': getKinValue(i60_up),
@@ -951,7 +958,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     let currentStartIdx = firstOnsetIdx;
 
-    // 優化：移除長度 < 3 的限制，尋找全域所有符合標準的動作，且略過小幅度雜訊
     while (currentStartIdx < kinAngleData.length - 1) {
       let peakIdx = currentStartIdx;
       let maxAngle = kinAngleData[currentStartIdx];
@@ -972,7 +978,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       }
 
       const durationSamples = endIdx - currentStartIdx;
-      const minDurationSamples = kinSR * 0.5; // 0.5s minimum duration
+      const minDurationSamples = kinSR * 0.5;
 
       if (maxAngle - kinAngleData[currentStartIdx] >= 15 && durationSamples > minDurationSamples) {
         detectedCycles.push({ startIdx: currentStartIdx, peakIdx: peakIdx, endIdx: endIdx });
@@ -992,7 +998,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
       if (colIdx !== -1 && emgFileResult[colIdx]) {
         let raw = emgFileResult[colIdx];
         if (useHampel) {
-          raw = hampelFilter(raw, hampelWindow, hampelSigma); // 執行 Hampel Filter 去突波
+          raw = hampelFilter(raw, hampelWindow, hampelSigma); 
         }
         if (notchFilter) {
           raw = biquadFilter(raw, 'notch', 60, emgSR);
@@ -1021,7 +1027,6 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
 
     const chartData = [];
     const fullDurationSamples = kinAngleData.length;
-    // 優化：圖表降採樣，最多渲染 4000 點防止瀏覽器卡頓
     const MAX_CHART_POINTS = 4000;
     const step = Math.max(1, Math.floor(fullDurationSamples / MAX_CHART_POINTS));
 
@@ -1167,7 +1172,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
     if (!previewEmgKey || !analysisResult.emgProcessed[previewEmgKey]) return '-';
     
     const cycle = analysisResult.cycles[selectedRepIdx];
-    const emgData = analysisResult.emgProcessed[previewEmgKey].filtered;
+    const emgData = analysisResult.emgProcessed[previewEmgKey].envelope; // 統一使用 envelope 預覽
     const emgStart = Math.max(0, Math.floor((cycle.startIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
     const emgEnd = Math.min(emgData.length - 1, Math.floor((cycle.endIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
     
@@ -1255,7 +1260,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     {useHampel && (
                       <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
                         <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
-                        <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
+                        <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-10 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
                         <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
                         <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="閥值倍數"/>
                       </div>
@@ -1390,7 +1395,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                 </div>
               </div>
 
-              {/* Kinematics Preview Block (Expanded to grid-cols-4 for 8 items) */}
+              {/* Kinematics Preview Block */}
               <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
                 <div className="absolute -right-6 -top-6 text-emerald-500/10"><Eye size={100} /></div>
                 <div>
@@ -1582,7 +1587,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [baselineLength, setBaselineLength] = useState(2000); 
   const [appliedBaseline, setAppliedBaseline] = useState(null);
   
-  const [useHampel, setUseHampel] = useState(false); // 新增 Hampel Filter 開關狀態
+  const [useHampel, setUseHampel] = useState(false); 
   const [hampelWindow, setHampelWindow] = useState(50);
   const [hampelSigma, setHampelSigma] = useState(3.0);
   const [notchFilter, setNotchFilter] = useState(true);
@@ -1689,7 +1694,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
 
     let rawData = data;
     if (useHampel) {
-      rawData = hampelFilter(rawData, hampelWindow, hampelSigma); // 執行 Hampel Filter 去突波
+      rawData = hampelFilter(rawData, hampelWindow, hampelSigma); 
     }
     if (notchFilter) {
       rawData = biquadFilter(rawData, 'notch', 60, samplingRate);
@@ -1778,6 +1783,7 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
     const stableWindow = analysisResult.fullRms.slice(safeStart, safeEnd);
     if (stableWindow.length === 0) return null;
 
+    // 此處依然維持將這段二次濾波(LPF包絡線)計算 RMS 以呈現最終代表數值
     const sumSq = stableWindow.reduce((acc, val) => acc + Math.pow(val, 2), 0);
     const finalRMS = Math.sqrt(sumSq / stableWindow.length);
     
@@ -1907,46 +1913,66 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
             </button>
           </div>
 
-          <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex gap-3">
-            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
-              <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波
-            </label>
-            {useHampel && (
-              <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
-                <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
-                <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小 (樣本數)"/>
-                <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
-                <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="判定異常的標準差倍數"/>
-              </div>
-            )}
-            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
-              <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
-            </label>
-            <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="動態提升 High-pass 至 30Hz 濾除心跳突波">
-              <input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG
-            </label>
-          </div>
-
           <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
-            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">二次濾波(LPF):</span>
+            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">Bandpass:</span>
             <input 
               type="number" 
-              value={lpfCutoff} 
-              onChange={(e) => setLpfCutoff(Number(e.target.value))}
+              value={bpHigh} 
+              onChange={(e) => setBpHigh(Number(e.target.value))}
               className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
-              title="取代原本RMS，等同於LabVIEW的翻正後二次濾波"
+              title="高通頻率 (Hz)"
+            />
+            <span className="text-xs text-slate-400 mx-1">-</span>
+            <input 
+              type="number" 
+              value={bpLow} 
+              onChange={(e) => setBpLow(Number(e.target.value))}
+              className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
+              title="低通頻率 (Hz)"
             />
             <span className="text-xs text-slate-400 ml-1">Hz</span>
-          </div>
+        </div>
 
-          <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
-            <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">採樣率:</span>
-              <input 
-                type="number" 
-                value={samplingRate} 
-                onChange={(e) => setSamplingRate(parseInt(e.target.value))}
-                className="w-14 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none"
-              />
+        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex gap-3">
+          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="消除單一高突波 (Cable/Motion Artifact)">
+            <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600"/> 去突波
+          </label>
+          {useHampel && (
+            <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
+              <span className="text-[9px] text-indigo-600 font-bold">窗格:</span>
+              <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小 (樣本數)"/>
+              <span className="text-[9px] text-indigo-600 font-bold ml-1">σ:</span>
+              <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-9 bg-transparent text-[10px] font-bold text-center outline-none text-indigo-900" title="判定異常的標準差倍數"/>
+            </div>
+          )}
+          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="濾除 60Hz 市電雜訊">
+            <input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波
+          </label>
+          <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer" title="動態提升 High-pass 至 30Hz 濾除心跳突波">
+            <input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG
+          </label>
+        </div>
+
+        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
+          <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">二次濾波(LPF):</span>
+          <input 
+            type="number" 
+            value={lpfCutoff} 
+            onChange={(e) => setLpfCutoff(Number(e.target.value))}
+            className="w-10 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none text-center"
+            title="取代原本RMS，等同於LabVIEW的翻正後二次濾波"
+          />
+          <span className="text-xs text-slate-400 ml-1">Hz</span>
+        </div>
+
+        <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
+          <span className="text-xs font-semibold text-slate-500 mr-2 shrink-0">採樣率:</span>
+            <input 
+              type="number" 
+              value={samplingRate} 
+              onChange={(e) => setSamplingRate(parseInt(e.target.value))}
+              className="w-14 bg-transparent text-sm font-bold text-indigo-600 focus:outline-none"
+            />
           </div>
           
           <div className="flex items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hidden md:flex">
