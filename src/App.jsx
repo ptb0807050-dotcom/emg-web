@@ -61,6 +61,25 @@ const SIDE_MAPPINGS = {
   }
 };
 
+// 專屬演奏任務的雙側與頸部通道映射
+const OPEN_STRING_MAPPINGS = {
+  emg: GLOBAL_EMG_MAPPINGS.map(m => ({
+    key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
+  })),
+  kin: [
+    { key: 'RScapUpDown', label: 'R Scap Up/Down', regex: /RScapUpDownRotation|RScapUpDown/i },
+    { key: 'RScapAntPos', label: 'R Scap Ant/Pos', regex: /RScapAntPosTilt|RScapAntPos/i },
+    { key: 'RScapIntExt', label: 'R Scap Int/Ext', regex: /RScapIntExtRotation|RScapIntExt/i },
+    { key: 'LScapUpDown', label: 'L Scap Up/Down', regex: /LScapUpDownRotation|LScapUpDown/i },
+    { key: 'LScapAntPos', label: 'L Scap Ant/Pos', regex: /LScapAntPosTilt|LScapAntPos/i },
+    { key: 'LScapIntExt', label: 'L Scap Int/Ext', regex: /LScapIntExtRotation|LScapIntExt/i },
+    { key: 'Cervical_FE', label: 'Cervical F./E.', regex: /Cervical\s*F\.?\/E\.|Cervical\s*F/i },
+    { key: 'Cervical_Rot', label: 'Cervical Rot.', regex: /Cervical\s*Rot\.?/i },
+    { key: 'Cervical_SB', label: 'Cervical SB.', regex: /Cervical\s*SB\.?/i },
+    { key: 'RHTPlaneOfElev', label: 'R HT Plane of Elev', regex: /RHTPlaneOfElev|RHTPlane/i }
+  ]
+};
+
 // --- 動態載入 Excel (SheetJS) 函式庫 ---
 let xlsxLoadPromise = null;
 const loadXLSX = () => {
@@ -501,23 +520,24 @@ const MvicDatabase = ({ activeSubjectId, mvicData, setMvicData, onBack }) => {
 };
 
 // --- 任務數據總表 (Task Database) 模組 ---
-const TaskDatabase = ({ 
+const TaskDatabase = ({
   activeSubjectId,
   taskLiftEmgData, setTaskLiftEmgData, taskLiftAngleData, setTaskLiftAngleData,
-  taskOpenStringData, setTaskOpenStringData,
-  taskScaleData, setTaskScaleData,
-  taskMusicData, setTaskMusicData,
-  onBack 
+  taskOpenStringData, setTaskOpenStringData, taskOpenStringAngleData, setTaskOpenStringAngleData,
+  taskScaleData, setTaskScaleData, taskScaleAngleData, setTaskScaleAngleData,
+  taskMusicData, setTaskMusicData, taskMusicAngleData, setTaskMusicAngleData,
+  onBack
 }) => {
-  const [activeTask, setActiveTask] = useState('lifting'); 
-  const [activeTab, setActiveTab] = useState('emg'); 
+  const [activeTask, setActiveTask] = useState('lifting');
+  const [activeTab, setActiveTab] = useState('emg');
   const [modal, setModal] = useState({ isOpen: false, target: '', type: '' });
+  const [taskFilter, setTaskFilter] = useState('ALL');
 
   const tasks = {
-    lifting: { id: 'lifting', name: '舉手任務', icon: <ArrowUpRight size={18} />, emg: taskLiftEmgData, angle: taskLiftAngleData, setEmg: setTaskLiftEmgData, setAngle: setTaskLiftAngleData },
-    openstring: { id: 'openstring', name: '空弦演奏', icon: <Music size={18} />, emg: taskOpenStringData, angle: {}, setEmg: setTaskOpenStringData, setAngle: () => {} },
-    scale: { id: 'scale', name: '音階演奏', icon: <ListMusic size={18} />, emg: taskScaleData, angle: {}, setEmg: setTaskScaleData, setAngle: () => {} },
-    music: { id: 'music', name: '樂曲演奏', icon: <PlaySquare size={18} />, emg: taskMusicData, angle: {}, setEmg: setTaskMusicData, setAngle: () => {} }
+    lifting: { id: 'lifting', name: '舉手任務', icon: <ArrowUpRight size={18} />, emg: taskLiftEmgData, angle: taskLiftAngleData, setEmg: setTaskLiftEmgData, setAngle: setTaskLiftAngleData, hasConditions: false },
+    openstring: { id: 'openstring', name: '空弦演奏', icon: <Music size={18} />, emg: taskOpenStringData, angle: taskOpenStringAngleData, setEmg: setTaskOpenStringData, setAngle: setTaskOpenStringAngleData, hasConditions: true },
+    scale: { id: 'scale', name: '音階演奏', icon: <ListMusic size={18} />, emg: taskScaleData, angle: taskScaleAngleData, setEmg: setTaskScaleData, setAngle: setTaskScaleAngleData, hasConditions: true },
+    music: { id: 'music', name: '樂曲演奏', icon: <PlaySquare size={18} />, emg: taskMusicData, angle: taskMusicAngleData, setEmg: setTaskMusicData, setAngle: setTaskMusicAngleData, hasConditions: true }
   };
 
   const handleClear = (target, type) => {
@@ -526,17 +546,42 @@ const TaskDatabase = ({
 
   const confirmClear = () => {
     const currentTaskActions = tasks[activeTask];
+    const isLifting = activeTask === 'lifting';
     if (modal.target === 'ALL') {
       if (modal.type === 'emg') {
-        currentTaskActions.setEmg(MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}));
+        if (isLifting) {
+          currentTaskActions.setEmg(MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}));
+        } else if (taskFilter !== 'ALL') {
+          const newData = { ...currentTaskActions.emg };
+          Object.keys(newData).forEach(k => { if (k.includes(`(${taskFilter})`)) delete newData[k]; });
+          currentTaskActions.setEmg(newData);
+        } else {
+          currentTaskActions.setEmg({});
+        }
       } else {
-        currentTaskActions.setAngle({});
+        if (isLifting) {
+          currentTaskActions.setAngle({});
+        } else if (taskFilter !== 'ALL') {
+          const newData = { ...currentTaskActions.angle };
+          Object.keys(newData).forEach(k => { if (k.includes(`(${taskFilter})`)) delete newData[k]; });
+          currentTaskActions.setAngle(newData);
+        } else {
+          currentTaskActions.setAngle({});
+        }
       }
     } else {
       if (modal.type === 'emg') {
-        currentTaskActions.setEmg(prev => ({ ...prev, [modal.target]: [] }));
+        if (isLifting) {
+          currentTaskActions.setEmg(prev => ({ ...prev, [modal.target]: [] }));
+        } else {
+          currentTaskActions.setEmg(prev => { const nd = { ...prev }; delete nd[modal.target]; return nd; });
+        }
       } else {
-        currentTaskActions.setAngle(prev => ({ ...prev, [modal.target]: [] }));
+        if (isLifting) {
+          currentTaskActions.setAngle(prev => ({ ...prev, [modal.target]: [] }));
+        } else {
+          currentTaskActions.setAngle(prev => { const nd = { ...prev }; delete nd[modal.target]; return nd; });
+        }
       }
     }
     setModal({ isOpen: false, target: '', type: '' });
@@ -544,7 +589,20 @@ const TaskDatabase = ({
 
   const currentTaskData = tasks[activeTask];
   const currentData = activeTab === 'emg' ? currentTaskData.emg : currentTaskData.angle;
-  const displayKeys = Object.keys(currentData).filter(k => currentData[k] && currentData[k].length > 0);
+
+  // 動態抓取已存的條件組合標籤 (僅演奏任務適用)
+  const availableFilters = useMemo(() => {
+    if (!currentTaskData.hasConditions) return [];
+    const conditions = new Set();
+    Object.keys(currentTaskData.emg).forEach(k => { const m = k.match(/\((.*?)\)/); if (m) conditions.add(m[1]); });
+    Object.keys(currentTaskData.angle).forEach(k => { const m = k.match(/\((.*?)\)/); if (m) conditions.add(m[1]); });
+    return Array.from(conditions).sort();
+  }, [currentTaskData]);
+
+  let displayKeys = Object.keys(currentData).filter(k => currentData[k] && currentData[k].length > 0);
+  if (currentTaskData.hasConditions && taskFilter !== 'ALL') {
+    displayKeys = displayKeys.filter(k => k.includes(`(${taskFilter})`));
+  }
 
   const getMean = (trials, phase) => {
     const validVals = trials.map(t => t[phase]).filter(v => v !== undefined && v !== '');
@@ -560,7 +618,7 @@ const TaskDatabase = ({
             <h3 className="text-xl font-bold text-slate-900 mb-2">清空任務數據</h3>
             <p className="text-sm text-slate-600 mb-6 mt-4">
               {modal.target === 'ALL' ? (
-                <>確定要清空 <strong>{tasks[activeTask].name} ({modal.type === 'emg' ? 'EMG' : '觀察角度'})</strong> 的<span className="font-bold text-rose-600">所有</span>儲存數據嗎？<br/><br/>此操作無法復原。</>
+                <>確定要清空 <strong>{tasks[activeTask].name} ({modal.type === 'emg' ? 'EMG' : '觀察角度'})</strong> {currentTaskData.hasConditions && taskFilter !== 'ALL' && `且條件為 [${taskFilter}]`} 的<span className="font-bold text-rose-600">所有</span>儲存數據嗎？<br/><br/>此操作無法復原。</>
               ) : (
                 <>確定要清空 <span className="font-bold text-rose-600">{modal.target}</span> 的所有儲存數據嗎？此操作無法復原。</>
               )}
@@ -592,36 +650,52 @@ const TaskDatabase = ({
       </header>
 
       <main className="max-w-7xl mx-auto space-y-4">
-        <div className="flex flex-wrap gap-3 pb-2">
-          {Object.values(tasks).map(task => (
-            <button
-              key={task.id}
-              onClick={() => { setActiveTask(task.id); setActiveTab('emg'); }}
-              className={`px-5 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTask === task.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}
-            >
-              {task.icon} {task.name}
-            </button>
-          ))}
+        <div className="flex flex-wrap justify-between gap-3 pb-2 border-b border-slate-200">
+          <div className="flex flex-wrap gap-3">
+            {Object.values(tasks).map(task => (
+              <button
+                key={task.id}
+                onClick={() => { setActiveTask(task.id); setActiveTab('emg'); setTaskFilter('ALL'); }}
+                className={`px-5 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTask === task.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}
+              >
+                {task.icon} {task.name}
+              </button>
+            ))}
+          </div>
+
+          {availableFilters.length > 0 && (
+            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-200">
+              <span className="text-sm font-bold text-slate-700">條件篩選:</span>
+              <select
+                value={taskFilter}
+                onChange={e => setTaskFilter(e.target.value)}
+                className="p-1 rounded-lg border border-slate-200 text-sm font-bold text-indigo-700 outline-none cursor-pointer bg-slate-50"
+              >
+                <option value="ALL">全部組合</option>
+                {availableFilters.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-between items-center pb-2">
+        <div className="flex justify-between items-center pb-2 pt-2">
           <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={() => setActiveTab('emg')} 
+            <button
+              onClick={() => setActiveTab('emg')}
               className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'emg' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 border border-slate-200'}`}
             >
               <Activity size={18} /> EMG 肌肉活化數據
             </button>
-            <button 
-              onClick={() => setActiveTab('angle')} 
+            <button
+              onClick={() => setActiveTab('angle')}
               className={`px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeTab === 'angle' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 border border-slate-200'}`}
             >
               <Eye size={18} /> 觀察關節角度數據
             </button>
           </div>
           {displayKeys.length > 0 && (
-            <button 
-              onClick={() => handleClear('ALL', activeTab)} 
+            <button
+              onClick={() => handleClear('ALL', activeTab)}
               className="text-sm text-rose-500 hover:text-rose-600 flex items-center gap-1 font-bold px-4 py-2 rounded-xl hover:bg-rose-50 transition-colors shadow-sm border border-rose-100 bg-white active:scale-95"
             >
               <Trash2 size={16} /> 清空{activeTab === 'emg' ? '所有肌肉' : '所有角度'}數據
@@ -633,7 +707,7 @@ const TaskDatabase = ({
           {displayKeys.length === 0 ? (
             <div className="p-20 text-center flex flex-col items-center justify-center h-full">
               <Database size={64} className="text-slate-200 mb-4" />
-              <h3 className="text-lg font-bold text-slate-400">「{currentTaskData.name} - {activeTab === 'emg' ? 'EMG' : '觀察角度'}」尚無儲存數據</h3>
+              <h3 className="text-lg font-bold text-slate-400">「{tasks[activeTask].name} - {activeTab === 'emg' ? 'EMG' : '觀察角度'}」尚無儲存數據</h3>
               <p className="text-sm text-slate-400 mt-2">請先前往對應的分析模組進行分析並批次寫入資料庫。</p>
             </div>
           ) : (
@@ -641,7 +715,7 @@ const TaskDatabase = ({
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-sm">
                   <tr>
-                    <th className="p-5">{activeTab === 'emg' ? '目標肌肉' : '觀察通道'}</th>
+                    <th className="p-5">{activeTab === 'emg' ? `目標肌肉${currentTaskData.hasConditions ? '(條件組合)' : ''}` : `觀察通道${currentTaskData.hasConditions ? '(條件組合)' : ''}`}</th>
                     <th className="p-5">動作階段 (Phase)</th>
                     <th className="p-5">Trial 1</th>
                     <th className="p-5">Trial 2</th>
@@ -655,29 +729,23 @@ const TaskDatabase = ({
                     const trials = currentData[targetKey];
                     let phases = ['Overall'];
                     if (activeTask === 'lifting') {
-                      phases = activeTab === 'emg' 
+                      phases = activeTab === 'emg'
                         ? ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30']
                         : ['Up_30', 'Up_60', 'Up_90', 'Up_120', 'Down_120', 'Down_90', 'Down_60', 'Down_30'];
+                    } else {
+                      phases = activeTab === 'emg'
+                        ? ['Down_Bow', 'Up_Bow', 'Overall']
+                        : ['Start_Pos', 'Peak_Pos', 'End_Pos', 'ROM'];
                     }
-                    
+
                     return phases.map((phase, pIdx) => {
-                      let t1, t2, t3, mean, sd;
-                      if (activeTask === 'lifting') {
-                        t1 = trials[0]?.[phase];
-                        t2 = trials[1]?.[phase];
-                        t3 = trials[2]?.[phase];
-                        mean = getMean(trials, phase);
-                        const validVals = trials.map(t => t[phase]).filter(v => v !== undefined && v !== '').map(Number);
-                        sd = validVals.length > 1 ? calcSD(validVals, parseFloat(mean)).toFixed(4) : '-';
-                      } else {
-                        t1 = trials[0];
-                        t2 = trials[1];
-                        t3 = trials[2];
-                        const validVals = trials.filter(v => v !== undefined && v !== '').map(Number);
-                        mean = validVals.length > 0 ? (validVals.reduce((a,b)=>a+b,0)/validVals.length).toFixed(4) : '-';
-                        sd = validVals.length > 1 ? calcSD(validVals, parseFloat(mean)).toFixed(4) : '-';
-                      }
-                      
+                      const t1 = trials[0]?.[phase];
+                      const t2 = trials[1]?.[phase];
+                      const t3 = trials[2]?.[phase];
+                      const mean = getMean(trials, phase);
+                      const validVals = trials.map(t => t[phase]).filter(v => v !== undefined && v !== '').map(Number);
+                      const sd = validVals.length > 1 ? calcSD(validVals, parseFloat(mean)).toFixed(4) : '-';
+
                       const isEmg = activeTab === 'emg';
                       const formattedPhase = phase.replace('_', ' ');
 
@@ -691,8 +759,8 @@ const TaskDatabase = ({
                                   已存 {trials.length}/3 次
                                 </span>
                               </div>
-                              <button 
-                                onClick={() => handleClear(targetKey, activeTab)} 
+                              <button
+                                onClick={() => handleClear(targetKey, activeTab)}
                                 className="mt-4 flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 hover:underline transition-colors"
                               >
                                 <Trash2 size={14} /> 清除此目標
@@ -2338,6 +2406,1975 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   );
 };
 
+// --- 空弦演奏分析 (Open String Task) 模組 ---
+const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTaskOpenStringData, taskOpenStringAngleData, setTaskOpenStringAngleData }) => {
+  const [emgFileResult, setEmgFileResult] = useState(null);
+  const [emgHeaders, setEmgHeaders] = useState([]);
+  const [kinFileResult, setKinFileResult] = useState(null);
+  const [kinHeaders, setKinHeaders] = useState([]);
+
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const [speedType, setSpeedType] = useState('Fast');
+  const [stringType, setStringType] = useState('G');
+
+  const [emgMapping, setEmgMapping] = useState({});
+  const [kinMapping, setKinMapping] = useState({});
+
+  const [previewEmgKey, setPreviewEmgKey] = useState('');
+  const [previewKinKey, setPreviewKinKey] = useState('');
+
+  const [kinAngleColIdx, setKinAngleColIdx] = useState(1);
+  const [kinTrigColIdx, setKinTrigColIdx] = useState(-1);
+  const [kinTrigThresh, setKinTrigThresh] = useState(2.0);
+
+  const [emgSR, setEmgSR] = useState(1000);
+  const [kinSR, setKinSR] = useState(200);
+
+  const [kinBaselineFrames, setKinBaselineFrames] = useState(500);
+  const [kinDipThresh, setKinDipThresh] = useState(15.0);
+  const [kinOnsetConsecutive, setKinOnsetConsecutive] = useState(50);
+  const [endDetectionMethod, setEndDetectionMethod] = useState('flat');
+  const [kinStopConsecutive, setKinStopConsecutive] = useState(50);
+  const [kinStopTolerance, setKinStopTolerance] = useState(0.1);
+
+  const [isManualBaselineMode, setIsManualBaselineMode] = useState(false);
+  const [manualBaseStart, setManualBaseStart] = useState(null);
+  const [manualBaseEnd, setManualBaseEnd] = useState(null);
+  const [isSelectingBase, setIsSelectingBase] = useState(false);
+  const [appliedBaseline, setAppliedBaseline] = useState(null);
+
+  const [bpHigh, setBpHigh] = useState(30);
+  const [bpLow, setBpLow] = useState(450);
+  const [lpfCutoff, setLpfCutoff] = useState(20);
+
+  const [useHampel, setUseHampel] = useState(false);
+  const [hampelWindow, setHampelWindow] = useState(50);
+  const [hampelSigma, setHampelSigma] = useState(3.0);
+
+  const [notchFilter, setNotchFilter] = useState(true);
+  const [ecgFilter, setEcgFilter] = useState(false);
+
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [selectedRepIdx, setSelectedRepIdx] = useState(0);
+  const [draggingMarker, setDraggingMarker] = useState(null);
+
+  const autoMap = useCallback((eHeaders, kHeaders) => {
+    const eMap = {};
+    OPEN_STRING_MAPPINGS.emg.forEach(m => {
+      const idx = eHeaders.findIndex(h => m.regex.test(h));
+      eMap[m.key] = idx !== -1 ? idx : -1;
+    });
+    const kMap = {};
+    OPEN_STRING_MAPPINGS.kin.forEach(m => {
+      const idx = kHeaders.findIndex(h => m.regex.test(h));
+      kMap[m.key] = idx !== -1 ? idx : -1;
+    });
+
+    setEmgMapping(eMap);
+    setKinMapping(kMap);
+    setPreviewEmgKey(OPEN_STRING_MAPPINGS.emg[0].key);
+    setPreviewKinKey(OPEN_STRING_MAPPINGS.kin[0].key);
+
+    const rhtIdx = kHeaders.findIndex(h => /RHTPlaneOfElev|RHTPlane|Plane of Elev/i.test(h));
+    if (rhtIdx !== -1) {
+        setKinAngleColIdx(rhtIdx);
+    }
+  }, []);
+
+  const handleEmgUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { finalHeaders, trimmedColumns, interpolatedCount } = parseDataContent(e.target.result);
+        setEmgHeaders(finalHeaders);
+        setEmgFileResult(trimmedColumns);
+        autoMap(finalHeaders, kinHeaders);
+        setErrorMessage(null);
+        if (interpolatedCount > 0) {
+          showToast(`⚠️ 偵測到 ${interpolatedCount} 筆 EMG 遺失數據，已自動線性插值修復！`);
+        }
+      } catch (err) { setErrorMessage(`EMG 解析失敗: ${err.message}`); }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleKinUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { finalHeaders, trimmedColumns, interpolatedCount } = parseDataContent(e.target.result);
+        setKinHeaders(finalHeaders);
+        setKinFileResult(trimmedColumns);
+
+        const trigIdx = finalHeaders.findIndex(h => h.toLowerCase().includes('trigger') || h.toLowerCase().includes('trig'));
+        setKinTrigColIdx(trigIdx !== -1 ? trigIdx : -1);
+
+        autoMap(emgHeaders, finalHeaders);
+
+        setErrorMessage(null);
+        if (interpolatedCount > 0) {
+          showToast(`⚠️ 偵測到 ${interpolatedCount} 筆 Kinematic 遺失數據，已自動線性插值修復！`);
+        }
+      } catch (err) { setErrorMessage(`Kinematic 解析失敗: ${err.message}`); }
+    };
+    reader.readAsText(file);
+  };
+
+  const buildCycleMetrics = (cycle, localEmgSR, localKinSR, kinAngleData, emgProcessedMap, currentKinMapping, kinFileResultObj, kinTIdx) => {
+    const emgSegmentsAll = {};
+    Object.entries(emgProcessedMap).forEach(([key, data]) => {
+      const calcEmgSegment = (sIdx, eIdx) => {
+        if (sIdx === null || eIdx === null || sIdx >= eIdx) return '';
+        const emgStart = Math.max(0, Math.floor((sIdx - kinTIdx) / localKinSR * localEmgSR));
+        const emgEnd = Math.min(data.filtered.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
+
+        let sumSq = 0, countRms = 0;
+        for(let i = emgStart; i <= emgEnd && i < data.filtered.length; i++) {
+          sumSq += Math.pow(data.filtered[i], 2);
+          countRms++;
+        }
+        return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '';
+      };
+
+      emgSegmentsAll[key] = {
+        'Down_Bow': calcEmgSegment(cycle.startIdx, cycle.peakIdx),
+        'Up_Bow': calcEmgSegment(cycle.peakIdx, cycle.endIdx),
+        'Overall': calcEmgSegment(cycle.startIdx, cycle.endIdx)
+      };
+    });
+
+    const kinPointsAll = {};
+    Object.entries(currentKinMapping).forEach(([key, colIdx]) => {
+      if (colIdx !== -1 && kinFileResultObj[colIdx]) {
+        const extraData = kinFileResultObj[colIdx];
+        const getKinValue = (idx) => {
+          if (idx === null || idx >= extraData.length) return '';
+          return +(extraData[idx]).toFixed(2);
+        };
+        kinPointsAll[key] = {
+          'Start_Pos': getKinValue(cycle.startIdx),
+          'Peak_Pos': getKinValue(cycle.peakIdx),
+          'End_Pos': getKinValue(cycle.endIdx),
+          'ROM': Math.abs(getKinValue(cycle.peakIdx) - getKinValue(cycle.startIdx)).toFixed(2)
+        };
+      }
+    });
+
+    const pkAngle = kinAngleData[cycle.peakIdx];
+
+    return {
+      ...cycle,
+      maxAngle: pkAngle.toFixed(1),
+      duration: +( (cycle.endIdx - cycle.startIdx) / localKinSR ).toFixed(2),
+      emgSegmentsAll,
+      kinPointsAll,
+    };
+  };
+
+  const processOpenStringTask = (customBaseline = appliedBaseline) => {
+    if (!emgFileResult || !kinFileResult) {
+      setErrorMessage("請先載入 EMG 與 KINEMATIC 兩個檔案！"); return;
+    }
+    if (kinAngleColIdx === -1) {
+      setErrorMessage("請指定主判定關節 (通常為 RHTPlaneOfElev)！"); return;
+    }
+
+    setErrorMessage(null); setAnalysisResult(null); setSelectedRepIdx(0);
+
+    const kinTriggerData = kinFileResult[kinTrigColIdx];
+    const kinAngleData = kinFileResult[kinAngleColIdx];
+
+    let kinTrigIdx = 0;
+    if (kinTrigColIdx !== -1 && kinTriggerData) {
+      for (let i = 0; i < kinTriggerData.length; i++) {
+        if (kinTriggerData[i] >= kinTrigThresh) { kinTrigIdx = i; break; }
+      }
+    }
+
+    let baseline = kinAngleData[0];
+    if (customBaseline) {
+      const sIdx = Math.max(0, Math.floor(customBaseline.startT * kinSR) + kinTrigIdx);
+      const eIdx = Math.min(kinAngleData.length - 1, Math.floor(customBaseline.endT * kinSR) + kinTrigIdx);
+      let sum = 0; let count = 0;
+      for(let i=sIdx; i<=eIdx; i++) { sum += kinAngleData[i]; count++; }
+      baseline = count > 0 ? sum / count : kinAngleData[0];
+    } else {
+      let baselineSum = 0;
+      let baselineCount = 0;
+      const startBaseIdx = Math.max(0, kinTrigIdx);
+      const endBaseIdx = Math.min(kinAngleData.length, startBaseIdx + kinBaselineFrames);
+      for (let i = startBaseIdx; i < endBaseIdx; i++) {
+        baselineSum += kinAngleData[i];
+        baselineCount++;
+      }
+      baseline = baselineCount > 0 ? baselineSum / baselineCount : kinAngleData[0];
+    }
+
+    const detectedCycles = [];
+    let scanIdx = Math.max(1, kinTrigIdx);
+
+    while (scanIdx < kinAngleData.length - 1) {
+      let startIdx = -1;
+      let consecutiveDown = 0;
+      for (let i = scanIdx; i < kinAngleData.length; i++) {
+        const delta = kinAngleData[i] - kinAngleData[i-1];
+        if (delta < 0) {
+          consecutiveDown++;
+          if (consecutiveDown >= kinOnsetConsecutive) {
+            startIdx = i - kinOnsetConsecutive + 1;
+            scanIdx = i;
+            break;
+          }
+        } else {
+          consecutiveDown = 0;
+        }
+      }
+
+      if (startIdx === -1) break;
+
+      let valley1Idx = scanIdx;
+      let upCount = 0;
+      let foundUpTrend = false;
+      for (let i = scanIdx; i < kinAngleData.length; i++) {
+         if (kinAngleData[i] - kinAngleData[i-1] > 0) {
+            upCount++;
+            if (upCount >= 5) {
+               foundUpTrend = true;
+               valley1Idx = i - 5;
+               scanIdx = i;
+               break;
+            }
+         } else {
+            upCount = 0;
+         }
+      }
+
+      if (!foundUpTrend) break;
+
+      let peakTrendIdx = scanIdx;
+      let downCount = 0;
+      let foundDownTrend = false;
+      for (let i = scanIdx; i < kinAngleData.length; i++) {
+         if (kinAngleData[i] - kinAngleData[i-1] < 0) {
+            downCount++;
+            if (downCount >= 5) {
+               foundDownTrend = true;
+               peakTrendIdx = i - 5;
+               scanIdx = i;
+               break;
+            }
+         } else {
+            downCount = 0;
+         }
+      }
+
+      if (!foundDownTrend) break;
+
+      let peakIdx = valley1Idx;
+      let maxVal = -Infinity;
+      for (let i = valley1Idx; i <= peakTrendIdx; i++) {
+         if (kinAngleData[i] > maxVal) {
+            maxVal = kinAngleData[i];
+            peakIdx = i;
+         }
+      }
+
+      scanIdx = peakIdx;
+      let endIdx = -1;
+
+      if (endDetectionMethod === 'flat') {
+        let flatCount = 0;
+        for (let i = peakIdx + 1; i < kinAngleData.length; i++) {
+           const diff = Math.abs(kinAngleData[i] - kinAngleData[i-1]);
+           if (diff < kinStopTolerance) {
+              flatCount++;
+              if (flatCount >= kinStopConsecutive) {
+                 endIdx = i - kinStopConsecutive + 1;
+                 scanIdx = i;
+                 break;
+              }
+           } else {
+              flatCount = 0;
+           }
+        }
+      } else {
+        let nextDropStartIdx = -1;
+        let cDown = 0;
+        for (let i = peakIdx + 1; i < kinAngleData.length; i++) {
+            if (kinAngleData[i] - kinAngleData[i-1] < 0) {
+                cDown++;
+                if (cDown >= kinOnsetConsecutive) {
+                    nextDropStartIdx = i - kinOnsetConsecutive + 1;
+                    break;
+                }
+            } else {
+                cDown = 0;
+            }
+        }
+
+        if (nextDropStartIdx !== -1) {
+            let maxUpVal = -Infinity;
+            let upPeakIdx = peakIdx;
+            for (let i = peakIdx; i <= nextDropStartIdx; i++) {
+                if (kinAngleData[i] > maxUpVal) {
+                    maxUpVal = kinAngleData[i];
+                    upPeakIdx = i;
+                }
+            }
+            endIdx = upPeakIdx;
+            scanIdx = upPeakIdx;
+        }
+      }
+
+      if (endIdx === -1) {
+         endIdx = kinAngleData.length - 1;
+         scanIdx = endIdx;
+      }
+
+      const durationSamples = endIdx - startIdx;
+      const minDurationSamples = kinSR * (speedType === 'Fast' ? 0.2 : 0.4);
+      const dropDepth = kinAngleData[startIdx] - kinAngleData[valley1Idx];
+
+      if (dropDepth >= kinDipThresh && durationSamples > minDurationSamples) {
+        detectedCycles.push({ startIdx: startIdx, peakIdx: peakIdx, endIdx: endIdx });
+      }
+
+      if (scanIdx <= startIdx) scanIdx = startIdx + 1;
+    }
+
+    if (detectedCycles.length === 0) {
+      setErrorMessage(`無法找出符合條件的完整動作過程。請確認下降啟動與結束判定參數。`);
+      return;
+    }
+
+    const emgProcessed = {};
+    Object.entries(emgMapping).forEach(([key, colIdx]) => {
+      if (colIdx !== -1 && emgFileResult[colIdx]) {
+        let raw = emgFileResult[colIdx];
+        if (useHampel) {
+          raw = hampelFilter(raw, hampelWindow, hampelSigma);
+        }
+        if (notchFilter) {
+          raw = biquadFilter(raw, 'notch', 60, emgSR);
+        }
+        let currentBpHigh = ecgFilter ? Math.max(30, bpHigh) : bpHigh;
+        const filtered = bandpassFilter(raw, currentBpHigh, bpLow, emgSR);
+        const rectified = new Float64Array(filtered.length);
+        for(let i=0; i<filtered.length; i++) rectified[i] = Math.abs(filtered[i]);
+        const envelope = biquadFilter(rectified, 'lowpass', lpfCutoff, emgSR);
+        emgProcessed[key] = { filtered, envelope };
+      }
+    });
+
+    const cycleMetrics = detectedCycles.map((cycle, index) => {
+      const baseCycle = {
+        id: index + 1,
+        startIdx: cycle.startIdx,
+        peakIdx: cycle.peakIdx,
+        endIdx: cycle.endIdx,
+        tStart: +( (cycle.startIdx - kinTrigIdx) / kinSR ).toFixed(3),
+        tPeak: +( (cycle.peakIdx - kinTrigIdx) / kinSR ).toFixed(3),
+        tEnd: +( (cycle.endIdx - kinTrigIdx) / kinSR ).toFixed(3),
+      };
+      return buildCycleMetrics(baseCycle, emgSR, kinSR, kinAngleData, emgProcessed, kinMapping, kinFileResult, kinTrigIdx);
+    });
+
+    const chartData = [];
+    const fullDurationSamples = kinAngleData.length;
+    const MAX_CHART_POINTS = 4000;
+    const step = Math.max(1, Math.floor(fullDurationSamples / MAX_CHART_POINTS));
+
+    for (let i = 0; i < fullDurationSamples; i += step) {
+      const t = (i - kinTrigIdx) / kinSR;
+      const matchingEmgIdx = Math.floor(t * emgSR);
+
+      const row = {
+         time: Math.round(t * 1000) / 1000,
+         angleMain: Math.round(kinAngleData[i] * 100) / 100
+      };
+
+      Object.entries(emgProcessed).forEach(([k, d]) => {
+         if (matchingEmgIdx >= 0 && matchingEmgIdx < d.envelope.length) {
+            row[`emg_${k}`] = Math.round(d.envelope[matchingEmgIdx] * 10000) / 10000;
+         }
+      });
+      Object.entries(kinMapping).forEach(([k, colIdx]) => {
+         if (colIdx !== -1 && kinFileResult[colIdx]) {
+            row[`kin_${k}`] = Math.round(kinFileResult[colIdx][i] * 100) / 100;
+         }
+      });
+      chartData.push(row);
+    }
+
+    setAnalysisResult({ chartData, cycles: cycleMetrics, emgProcessed, kinTrigIdx, baseline });
+  };
+
+  const showToast = (msg) => {
+    setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleBatchSave = () => {
+    if (!analysisResult || !analysisResult.cycles[selectedRepIdx]) return;
+    const cycle = analysisResult.cycles[selectedRepIdx];
+    let hasError = false;
+    let savedEmg = 0;
+    let savedKin = 0;
+
+    const conditionLabel = `${speedType}_${stringType}`;
+
+    const newEmgData = { ...taskOpenStringData };
+    Object.entries(cycle.emgSegmentsAll).forEach(([key, segs]) => {
+       if (Object.values(segs).some(v => v !== '')) {
+           const compKey = `${key} (${conditionLabel})`;
+           const current = newEmgData[compKey] || [];
+           if (current.length < 3) {
+              newEmgData[compKey] = [...current, { ...segs }];
+              savedEmg++;
+           } else {
+              hasError = true;
+           }
+       }
+    });
+
+    const newAngleData = { ...taskOpenStringAngleData };
+    Object.entries(cycle.kinPointsAll).forEach(([key, pts]) => {
+       if (Object.values(pts).some(v => v !== '')) {
+           const compKey = `${key} (${conditionLabel})`;
+           const current = newAngleData[compKey] || [];
+           if (current.length < 3) {
+              newAngleData[compKey] = [...current, { ...pts }];
+              savedKin++;
+           } else {
+              hasError = true;
+           }
+       }
+    });
+
+    setTaskOpenStringData(newEmgData);
+    setTaskOpenStringAngleData(newAngleData);
+
+    if (hasError) {
+       showToast(`⚠️ 部分通道在該條件 (${conditionLabel}) 下已達 3 次上限！其餘已寫入。`);
+    } else {
+       showToast(`✅ 成功批次寫入 ${savedEmg} 個 EMG 與 ${savedKin} 個 Kinematics 數據！`);
+    }
+  };
+
+  const handleNextRepetition = () => {
+    if (analysisResult && selectedRepIdx < analysisResult.cycles.length - 1) {
+      setSelectedRepIdx(selectedRepIdx + 1);
+    } else {
+      showToast("⚠️ 後續沒有找到更多循環動作了！");
+    }
+  };
+
+  const handlePrevRepetition = () => {
+    if (analysisResult && selectedRepIdx > 0) {
+      setSelectedRepIdx(selectedRepIdx - 1);
+    } else {
+      showToast("⚠️ 已經是第一個循環動作了！");
+    }
+  };
+
+  const handleChartMouseDown = useCallback((e) => {
+    if (e) {
+      const time = e.activeLabel !== undefined ? e.activeLabel : e.activePayload?.[0]?.payload?.time;
+      if (time === undefined || time === null) return;
+
+      if (isManualBaselineMode) {
+        setManualBaseStart(time);
+        setManualBaseEnd(time);
+        setIsSelectingBase(true);
+      } else if (analysisResult && analysisResult.cycles[selectedRepIdx]) {
+        const cycle = analysisResult.cycles[selectedRepIdx];
+        const dStart = Math.abs(time - cycle.tStart);
+        const dPeak = Math.abs(time - cycle.tPeak);
+        const dEnd = Math.abs(time - cycle.tEnd);
+
+        const minD = Math.min(dStart, dPeak, dEnd);
+        const tolerance = 1.0;
+
+        if (minD < tolerance) {
+          if (minD === dStart) setDraggingMarker('start');
+          else if (minD === dPeak) setDraggingMarker('peak');
+          else if (minD === dEnd) setDraggingMarker('end');
+        }
+      }
+    }
+  }, [isManualBaselineMode, analysisResult, selectedRepIdx]);
+
+  const handleChartMouseMove = useCallback((e) => {
+    if (isManualBaselineMode && isSelectingBase) {
+      if (e && e.activeLabel !== undefined) setManualBaseEnd(e.activeLabel);
+      return;
+    }
+    if (!draggingMarker) return;
+    if (e && e.activeLabel !== undefined) {
+       const time = e.activeLabel;
+       setAnalysisResult(prev => {
+          if (!prev) return prev;
+          const newCycles = [...prev.cycles];
+          const cycle = { ...newCycles[selectedRepIdx] };
+
+          const idx = Math.floor(time * kinSR) + prev.kinTrigIdx;
+          const maxIdx = kinFileResult[kinAngleColIdx].length - 1;
+
+          if (draggingMarker === 'start') {
+             if (idx < cycle.peakIdx) { cycle.startIdx = Math.max(0, idx); cycle.tStart = time; }
+          } else if (draggingMarker === 'peak') {
+             if (idx > cycle.startIdx && idx < cycle.endIdx) { cycle.peakIdx = idx; cycle.tPeak = time; }
+          } else if (draggingMarker === 'end') {
+             if (idx > cycle.peakIdx) { cycle.endIdx = Math.min(maxIdx, idx); cycle.tEnd = time; }
+          }
+
+          const updatedCycle = buildCycleMetrics(
+            cycle, emgSR, kinSR, kinFileResult[kinAngleColIdx],
+            prev.emgProcessed, kinMapping, kinFileResult,
+            prev.kinTrigIdx
+          );
+
+          newCycles[selectedRepIdx] = updatedCycle;
+          return { ...prev, cycles: newCycles };
+       });
+    }
+  }, [draggingMarker, selectedRepIdx, kinSR, emgSR, kinFileResult, kinAngleColIdx, kinMapping, isManualBaselineMode, isSelectingBase]);
+
+  const handleChartMouseUp = useCallback(() => {
+    setIsSelectingBase(false);
+    setDraggingMarker(null);
+  }, []);
+
+  const getPreviewMeanRms = () => {
+    if (!analysisResult || !analysisResult.cycles[selectedRepIdx]) return '-';
+    if (!previewEmgKey || !analysisResult.emgProcessed[previewEmgKey]) return '-';
+
+    const cycle = analysisResult.cycles[selectedRepIdx];
+    const emgData = analysisResult.emgProcessed[previewEmgKey].filtered;
+    const emgStart = Math.max(0, Math.floor((cycle.startIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
+    const emgEnd = Math.min(emgData.length - 1, Math.floor((cycle.endIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
+
+    let sumSq = 0, countRms = 0;
+    for(let i=emgStart; i<=emgEnd && i<emgData.length; i++) {
+       sumSq += Math.pow(emgData[i], 2);
+       countRms++;
+    }
+    return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '-';
+  };
+
+  const currentConditionLabel = `${speedType}_${stringType}`;
+  const currentSavedCount = Object.keys(taskOpenStringAngleData).length > 0
+    ? (taskOpenStringAngleData[`${previewKinKey || OPEN_STRING_MAPPINGS.kin[0].key} (${currentConditionLabel})`]?.length || 0)
+    : 0;
+
+  const currentMetrics = analysisResult?.cycles[selectedRepIdx];
+  const emgKeys = ['Down_Bow', 'Up_Bow', 'Overall'];
+  const kinKeys = ['Start_Pos', 'Peak_Pos', 'End_Pos', 'ROM'];
+
+  return (
+    <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-800 animate-in fade-in duration-500 relative" onMouseUp={handleChartMouseUp} onMouseLeave={handleChartMouseUp}>
+      {toastMessage && (
+        <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
+          <span className="font-bold text-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      <header className="max-w-7xl mx-auto flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 gap-4">
+        <div className="flex items-center gap-4 shrink-0">
+          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-800"><ArrowLeft size={24} /></button>
+          <div className="bg-blue-500 p-3 rounded-2xl shadow-lg"><Music className="text-white w-6 h-6" /></div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">空弦演奏批次分析 (Open String)</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold">受測者: {activeSubjectId}</span>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Bilateral Bowing Cycle Detection</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-sm cursor-pointer text-sm font-bold shrink-0 ${emgFileResult ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
+            <Upload size={18} /> {emgFileResult ? '已載入 EMG' : '載入 EMG 檔'}
+            <input type="file" className="hidden" accept=".csv,.txt" onChange={handleEmgUpload} />
+          </label>
+          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-sm cursor-pointer text-sm font-bold shrink-0 ${kinFileResult ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>
+            <Upload size={18} /> {kinFileResult ? '已載入 KINEMATIC' : '載入 KINEMATIC 檔'}
+            <input type="file" className="hidden" accept=".csv,.txt" onChange={handleKinUpload} />
+          </label>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto space-y-6">
+        {errorMessage && ( <div className="bg-rose-50 border border-rose-200 text-rose-700 px-6 py-4 rounded-2xl font-bold flex items-center gap-3"><Info size={20} /> {errorMessage}</div> )}
+
+        {emgFileResult && kinFileResult && (
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+
+              <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-indigo-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><Music size={14} className="shrink-0" /> 任務參數設定</div>
+                  <p className="text-[9px] text-indigo-500 mb-2 leading-tight">Fast/Slow 與 演奏弦</p>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">速度 (Speed):</span>
+                    <select value={speedType} onChange={e=>setSpeedType(e.target.value)} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      <option value="Fast">Fast (快)</option>
+                      <option value="Slow">Slow (慢)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">弦 (String):</span>
+                    <select value={stringType} onChange={e=>setStringType(e.target.value)} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      <option value="G">G 弦</option>
+                      <option value="D">D 弦</option>
+                      <option value="A">A 弦</option>
+                      <option value="E">E 弦</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block mt-1">目前組合標籤:</span>
+                    <div className="w-full p-1.5 rounded-lg border border-indigo-200 text-xs font-bold text-center text-indigo-700 bg-indigo-50">{speedType}_{stringType}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><Activity size={14} className="shrink-0" /> 硬體同步設定</div>
+                  <p className="text-[9px] text-slate-500 mb-2 leading-tight">Kinematic 接收 Trigger 之點 = EMG 第 0 筆</p>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div className="col-span-2"><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Trigger 通道:</span><select value={kinTrigColIdx} onChange={e=>setKinTrigColIdx(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white"><option value="-1">無</option>{kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}</select></div>
+                  <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Trigger 閥值:</span><input type="number" step="0.5" value={kinTrigThresh} onChange={e=>setKinTrigThresh(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-center text-rose-600 bg-white" disabled={kinTrigColIdx === -1}/></div>
+                  <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Kin SR (Hz):</span><input type="number" value={kinSR} onChange={e=>setKinSR(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-center bg-white" /></div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><Waves size={14} className="shrink-0" /> EMG 取樣設定</div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div className="col-span-2 flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-semibold text-slate-500">SR (Hz):</span>
+                    <input type="number" value={emgSR} onChange={e=>setEmgSR(Number(e.target.value))} className="w-16 p-1 rounded-lg border border-slate-200 text-xs font-bold text-center bg-white" />
+                  </div>
+
+                  <div className="col-span-2 flex flex-col gap-2 p-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <label className="flex items-center gap-2 text-[11px] font-bold text-indigo-700 cursor-pointer">
+                      <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600 w-3 h-3"/>
+                      去突波濾波器 (Hampel Filter)
+                    </label>
+                    {useHampel && (
+                      <div className="flex items-center justify-between gap-2 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100">
+                        <div className="flex items-center gap-1">
+                           <span className="text-[10px] text-indigo-600 font-bold">Window:</span>
+                           <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-10 bg-white border border-indigo-200 rounded text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
+                        </div>
+                        <div className="flex items-center gap-1">
+                           <span className="text-[10px] text-indigo-600 font-bold">Alpha(σ):</span>
+                           <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-10 bg-white border border-indigo-200 rounded text-[10px] font-bold text-center outline-none text-indigo-900" title="判定異常的標準差倍數"/>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-span-2 flex flex-wrap items-center justify-start gap-3 mt-1">
+                    <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer"><input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波</label>
+                    <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer"><input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG</label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50/50 p-3 rounded-2xl border border-amber-100/50 flex flex-col justify-between">
+                <div className="text-sm font-bold text-amber-800 mb-2 uppercase tracking-wide flex items-center gap-2"><Crosshair size={14} className="shrink-0" /> 主判定關節 (預設 RHTPlane)</div>
+                <div className="space-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Kin 主角度:</span>
+                    <select value={kinAngleColIdx} onChange={e=>setKinAngleColIdx(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      {kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="開頭計算基準線的取樣筆數">基線取樣(筆):</span><input type="number" value={kinBaselineFrames} onChange={e=>setKinBaselineFrames(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                    <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="連續下降幾筆作為下弓起點">下降啟動(筆):</span><input type="number" value={kinOnsetConsecutive} onChange={e=>setKinOnsetConsecutive(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                    <div className="col-span-2"><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="低於基準線多少距離視為入谷">入谷深度(°):</span><input type="number" step="1.0" value={kinDipThresh} onChange={e=>setKinDipThresh(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+
+                    <div className="col-span-2 mt-1">
+                      <span className="text-[10px] font-semibold text-slate-500 mb-1 block line-clamp-1">上弓結束判定:</span>
+                      <div className="flex gap-4 bg-white p-1.5 rounded-lg border border-amber-200">
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-amber-700 cursor-pointer">
+                          <input type="radio" name="endMode" value="flat" checked={endDetectionMethod === 'flat'} onChange={()=>setEndDetectionMethod('flat')} className="accent-amber-600"/> 平緩停頓
+                        </label>
+                        <label className="flex items-center gap-1 text-[10px] font-bold text-amber-700 cursor-pointer">
+                          <input type="radio" name="endMode" value="peak" checked={endDetectionMethod === 'peak'} onChange={()=>setEndDetectionMethod('peak')} className="accent-amber-600"/> 下一個高峰(接續下弓)
+                        </label>
+                      </div>
+                    </div>
+
+                    {endDetectionMethod === 'flat' && (
+                      <>
+                        <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="連續幾筆斜率近乎0視為結束">結束平緩(筆):</span><input type="number" value={kinStopConsecutive} onChange={e=>setKinStopConsecutive(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                        <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="判定為平緩時允許的極小斜率波動">平緩容差(|斜率|):</span><input type="number" step="0.01" value={kinStopTolerance} onChange={e=>setKinStopTolerance(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-end shrink-0">
+                <button onClick={() => processOpenStringTask(appliedBaseline)} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 h-full min-h-[84px] rounded-2xl font-bold transition-all shadow-lg active:scale-95 flex flex-col items-center justify-center gap-2 hover:shadow-blue-200">
+                  <Activity size={24} /> <span className="text-sm">套用分析</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-slate-200 pb-3 gap-3">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Layers size={16} className="text-indigo-500" /> 雙側通道對應 (Bilateral Mapping)</h4>
+                <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對頸部/雙側肩膀及所有肌肉。</div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 (10 通道)</h5>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => (
+                         <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-indigo-100 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
+                            <select value={emgMapping[m.key] ?? -1} onChange={e => setEmgMapping({...emgMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-indigo-900 bg-indigo-50/50 p-1 rounded border-none outline-none">
+                               <option value="-1">忽略</option>
+                               {emgHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                            </select>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+                <div>
+                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 (10 通道)</h5>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => (
+                         <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-emerald-100 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-500 mb-1 line-clamp-1">{m.label}</span>
+                            <select value={kinMapping[m.key] ?? -1} onChange={e => setKinMapping({...kinMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-emerald-900 bg-emerald-50/50 p-1 rounded border-none outline-none">
+                               <option value="-1">忽略</option>
+                               {kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                            </select>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {analysisResult && currentMetrics && (
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+
+            {/* 一鍵寫入資料庫大按鈕 */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row justify-between items-center mb-6">
+              <div className="mb-4 md:mb-0">
+                <h3 className="font-black text-xl flex items-center gap-2"><Database size={24} /> 批次寫入資料庫 ({speedType}_{stringType})</h3>
+                <p className="text-sm text-blue-100 mt-1 font-medium">將雙側所有肌肉與關節，依照 Down-bow / Up-bow 寫入 Task Database。</p>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-xs font-bold bg-white/20 px-3 py-1 rounded-full shadow-sm">此條件已存 {currentSavedCount}/3 次</span>
+                <button onClick={handleBatchSave} className="bg-white text-blue-800 px-8 py-3 rounded-2xl font-black shadow-xl hover:scale-105 active:scale-95 transition-all whitespace-nowrap">
+                  儲存此條件結果
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard title={`預覽肌肉 (${previewEmgKey || '未選擇'})`} value={getPreviewMeanRms()} unit="mV" icon={<BarChart className="text-blue-500" />} />
+              <MetricCard title={`ROM (${kinHeaders[kinAngleColIdx]})`} value={currentMetrics.kinPointsAll?.[previewKinKey]?.['ROM'] || '-'} unit="°" icon={<Layers className="text-amber-500" />} />
+              <MetricCard title="循環總時長 (Start to End)" value={currentMetrics.duration} unit="s" icon={<Info className="text-indigo-500" />} />
+              <div className="bg-slate-800 p-4 rounded-3xl border border-slate-700 shadow-sm flex flex-col justify-center items-center text-white relative overflow-hidden group">
+                <div className="absolute inset-0 bg-blue-500/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                <span className="text-xs font-bold text-slate-400 mb-1 relative z-10">目前檢視循環</span>
+                <span className="text-3xl font-black relative z-10">{currentMetrics.id} <span className="text-sm font-medium text-slate-400">/ {analysisResult.cycles.length}</span></span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
+                <div className="absolute -right-6 -top-6 text-indigo-500/10"><Activity size={100} /></div>
+                <div>
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div>
+                      <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2"><Eye size={18} className="text-indigo-600"/> EMG 區間預覽</h3>
+                    </div>
+                    <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-indigo-300 bg-white font-bold text-indigo-900 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mb-2 relative z-10">
+                    {emgKeys.map(phase => (
+                      <div key={phase} className="bg-white rounded-xl p-2 text-center border border-indigo-100 shadow-sm">
+                        <div className={`text-[10px] font-bold mb-1 ${phase.includes('Down') ? 'text-amber-500' : (phase.includes('Up') ? 'text-emerald-500' : 'text-blue-500')}`}>{phase.replace('_', ' ')}</div>
+                        <div className="text-sm font-black font-mono text-indigo-700">{currentMetrics.emgSegmentsAll?.[previewEmgKey]?.[phase] || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
+                <div className="absolute -right-6 -top-6 text-emerald-500/10"><Eye size={100} /></div>
+                <div>
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div>
+                      <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2"><Eye size={18} className="text-emerald-600"/> 觀察關節預覽</h3>
+                    </div>
+                    <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 mb-2 relative z-10">
+                    {kinKeys.map(phase => (
+                      <div key={phase} className="bg-white rounded-xl p-2 text-center border border-emerald-100 shadow-sm">
+                        <div className={`text-[10px] font-bold mb-1 ${phase.includes('ROM') ? 'text-blue-500' : 'text-emerald-500'}`}>{phase.replace('_', ' ')}</div>
+                        <div className="text-[12px] font-black font-mono text-emerald-700">{currentMetrics.kinPointsAll?.[previewKinKey]?.[phase] || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  {!isManualBaselineMode ? (
+                    <button onClick={() => { setIsManualBaselineMode(true); setManualBaseStart(null); setManualBaseEnd(null); }} className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 text-sm">
+                      手動框選基線
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-amber-400 shadow-md">
+                      <span className="text-xs font-bold text-amber-700 text-center">
+                        {manualBaseStart !== null && manualBaseEnd !== null ? `${Math.min(manualBaseStart, manualBaseEnd).toFixed(1)}s ~ ${Math.max(manualBaseStart, manualBaseEnd).toFixed(1)}s` : '請在下方圖表拖曳範圍'}
+                      </span>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setIsManualBaselineMode(false); setManualBaseStart(null); setManualBaseEnd(null); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-1.5 rounded-lg font-bold text-xs transition-colors">取消</button>
+                        <button onClick={() => {
+                          if (manualBaseStart !== null && manualBaseEnd !== null) {
+                            const newBaseline = { startT: Math.min(manualBaseStart, manualBaseEnd), endT: Math.max(manualBaseStart, manualBaseEnd) };
+                            setAppliedBaseline(newBaseline);
+                            processOpenStringTask(newBaseline);
+                            setIsManualBaselineMode(false);
+                            setToastMessage("✅ 基準重設成功！圖表已重新計算。");
+                            setTimeout(() => setToastMessage(null), 3000);
+                          }
+                        }} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg font-bold shadow-sm active:scale-95 text-xs transition-colors">套用選區</button>
+                      </div>
+                    </div>
+                  )}
+                  {appliedBaseline && !isManualBaselineMode && (
+                     <span className="text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">已套用自訂基線</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handlePrevRepetition}
+                    disabled={selectedRepIdx <= 0}
+                    className={`px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2 text-sm ${
+                      selectedRepIdx > 0
+                        ? 'bg-white hover:bg-slate-50 text-slate-700 active:scale-95 border border-slate-200'
+                        : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-transparent'
+                    }`}
+                  >
+                    <ArrowLeft size={16} />
+                    尋找上一筆
+                  </button>
+                  <button
+                    onClick={handleNextRepetition}
+                    disabled={selectedRepIdx >= analysisResult.cycles.length - 1}
+                    className={`px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2 text-sm ${
+                      selectedRepIdx < analysisResult.cycles.length - 1
+                        ? 'bg-slate-800 hover:bg-slate-900 text-white active:scale-95'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    尋找下一筆
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-md font-bold text-slate-700 flex items-center gap-2">
+                  <Waves size={18} className="text-indigo-500" /> 同步分析圖表預覽 (Bowing Cycle 視覺化)
+                </h3>
+                <div className="flex items-center gap-4 text-xs font-bold">
+                   <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#f59e0b] opacity-30 rounded-sm"></div> 下弓階段 (Down-Bow)</div>
+                   <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#10b981] opacity-30 rounded-sm"></div> 上弓階段 (Up-Bow)</div>
+                </div>
+              </div>
+
+              <div className="space-y-6 select-none" style={{ cursor: isManualBaselineMode ? 'crosshair' : (draggingMarker ? 'col-resize' : 'default') }} draggable={false}>
+                <div>
+                  <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-indigo-400">
+                    <p className="text-xs font-bold text-slate-500">EMG 圖表預覽通道:</p>
+                    <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 font-bold text-indigo-800 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                    <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
+                  </div>
+                  <div className="h-[220px] w-full select-none" draggable={false}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={analysisResult.chartData} syncId="openStringSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
+                          <defs><linearGradient id="emgFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} hide />
+                          <YAxis tick={{fontSize: 10}} width={40} />
+                          <Tooltip contentStyle={{fontSize:'12px', borderRadius:'12px'}} labelFormatter={(l)=>`Time: ${l}s`} />
+
+                          <ReferenceLine x={0} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" label={{ value: '硬體同步點', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
+
+                          {analysisResult.cycles.flatMap((cycle, idx) => {
+                            const elements = [
+                              <ReferenceArea key={`db-emg-${idx}`} x1={cycle.tStart} x2={cycle.tPeak} fill="#f59e0b" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />,
+                              <ReferenceArea key={`ub-emg-${idx}`} x1={cycle.tPeak} x2={cycle.tEnd} fill="#10b981" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />
+                            ];
+                            if (selectedRepIdx === idx) {
+                              elements.push(<ReferenceLine key={`peak-emg-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Turnaround', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                              elements.push(<ReferenceLine key={`start-emg-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                              elements.push(<ReferenceLine key={`end-emg-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                            }
+                            return elements;
+                          })}
+
+                          {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
+                             <ReferenceArea x1={Math.min(manualBaseStart, manualBaseEnd)} x2={Math.max(manualBaseStart, manualBaseEnd)} fill="#f59e0b" fillOpacity={0.3} />
+                          )}
+
+                          <Area name={`EMG ${previewEmgKey}`} type="monotone" dataKey={`emg_${previewEmgKey}`} stroke="#4f46e5" fill="url(#emgFill)" strokeWidth={2} isAnimationActive={false} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-amber-500">
+                    <p className="text-xs font-bold text-slate-500">Kinematic 觀察角度:</p>
+                    <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1 rounded-lg border border-emerald-200 bg-emerald-50 font-bold text-emerald-800 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="h-[280px] w-full select-none" draggable={false}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={analysisResult.chartData} syncId="openStringSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} tick={{fontSize: 10}} label={{value:'Time (s)', position:'insideBottom', offset:-5, fontSize:10, fill:'#94a3b8'}} />
+                        <YAxis domain={['auto', 'auto']} tick={{fontSize: 10}} width={40} />
+                        <Tooltip contentStyle={{fontSize:'12px', borderRadius:'12px'}} labelFormatter={(l)=>`Time: ${l}s`} />
+                        <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} verticalAlign="top" height={36}/>
+
+                        <ReferenceLine x={0} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" label={{ value: '硬體同步點', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
+
+                        <ReferenceLine y={analysisResult.baseline} stroke="#3b82f6" strokeDasharray="3 3" label={{value: `Baseline (${analysisResult.baseline?.toFixed(1)}°)`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold'}} />
+
+                        {analysisResult.cycles.flatMap((cycle, idx) => {
+                          const elements = [
+                            <ReferenceArea key={`db-kin-${idx}`} x1={cycle.tStart} x2={cycle.tPeak} fill="#f59e0b" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />,
+                            <ReferenceArea key={`ub-kin-${idx}`} x1={cycle.tPeak} x2={cycle.tEnd} fill="#10b981" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />
+                          ];
+                          if (selectedRepIdx === idx) {
+                            elements.push(<ReferenceLine key={`peak-kin-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Turnaround', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`start-kin-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`end-kin-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                          }
+                          return elements;
+                        })}
+
+                        {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
+                             <ReferenceArea x1={Math.min(manualBaseStart, manualBaseEnd)} x2={Math.max(manualBaseStart, manualBaseEnd)} fill="#f59e0b" fillOpacity={0.3} />
+                        )}
+
+                        <Line name={`主判定角度: ${kinHeaders[kinAngleColIdx]}`} type="monotone" dataKey="angleMain" stroke="#f59e0b" strokeWidth={3} dot={false} isAnimationActive={false} />
+                        <Line name={`預覽觀察角度: ${previewKinKey}`} type="monotone" dataKey={`kin_${previewKinKey}`} stroke="#0ea5e9" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
+                        <Brush dataKey="time" height={30} stroke="#94a3b8" fill="#f8fafc" travellerWidth={10} tickFormatter={(v) => `${v}s`} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+// --- 音階演奏分析 (Scale Task) 模組 ---
+const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleData, taskScaleAngleData, setTaskScaleAngleData }) => {
+  const [emgFileResult, setEmgFileResult] = useState(null);
+  const [emgHeaders, setEmgHeaders] = useState([]);
+  const [kinFileResult, setKinFileResult] = useState(null);
+  const [kinHeaders, setKinHeaders] = useState([]);
+
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const [speedType, setSpeedType] = useState('Fast');
+  const [scaleType, setScaleType] = useState('A_Major');
+
+  const [emgMapping, setEmgMapping] = useState({});
+  const [kinMapping, setKinMapping] = useState({});
+
+  const [previewEmgKey, setPreviewEmgKey] = useState('');
+  const [previewKinKey, setPreviewKinKey] = useState('');
+
+  const [kinAngleColIdx, setKinAngleColIdx] = useState(1);
+  const [kinTrigColIdx, setKinTrigColIdx] = useState(-1);
+  const [kinTrigThresh, setKinTrigThresh] = useState(2.0);
+
+  const [emgSR, setEmgSR] = useState(1000);
+  const [kinSR, setKinSR] = useState(200);
+
+  // 音階判定專用參數
+  const [kinOnsetConsecutive, setKinOnsetConsecutive] = useState(50);
+  const [kinUpConsecutive, setKinUpConsecutive] = useState(10);
+  const [kinBaselineFrames, setKinBaselineFrames] = useState(500);
+
+  const [isManualBaselineMode, setIsManualBaselineMode] = useState(false);
+  const [manualBaseStart, setManualBaseStart] = useState(null);
+  const [manualBaseEnd, setManualBaseEnd] = useState(null);
+  const [isSelectingBase, setIsSelectingBase] = useState(false);
+  const [appliedBaseline, setAppliedBaseline] = useState(null);
+
+  const [bpHigh, setBpHigh] = useState(30);
+  const [bpLow, setBpLow] = useState(450);
+  const [lpfCutoff, setLpfCutoff] = useState(20);
+
+  const [useHampel, setUseHampel] = useState(false);
+  const [hampelWindow, setHampelWindow] = useState(50);
+  const [hampelSigma, setHampelSigma] = useState(3.0);
+
+  const [notchFilter, setNotchFilter] = useState(true);
+  const [ecgFilter, setEcgFilter] = useState(false);
+
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [selectedRepIdx, setSelectedRepIdx] = useState(0);
+  const [draggingMarker, setDraggingMarker] = useState(null);
+
+  const autoMap = useCallback((eHeaders, kHeaders) => {
+    const eMap = {};
+    OPEN_STRING_MAPPINGS.emg.forEach(m => {
+      const idx = eHeaders.findIndex(h => m.regex.test(h));
+      eMap[m.key] = idx !== -1 ? idx : -1;
+    });
+    const kMap = {};
+    OPEN_STRING_MAPPINGS.kin.forEach(m => {
+      const idx = kHeaders.findIndex(h => m.regex.test(h));
+      kMap[m.key] = idx !== -1 ? idx : -1;
+    });
+
+    setEmgMapping(eMap);
+    setKinMapping(kMap);
+    setPreviewEmgKey(OPEN_STRING_MAPPINGS.emg[0].key);
+    setPreviewKinKey(OPEN_STRING_MAPPINGS.kin[0].key);
+
+    const rhtIdx = kHeaders.findIndex(h => /RHTPlaneOfElev|RHTPlane|Plane of Elev/i.test(h));
+    if (rhtIdx !== -1) {
+        setKinAngleColIdx(rhtIdx);
+    }
+  }, []);
+
+  const handleEmgUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { finalHeaders, trimmedColumns, interpolatedCount } = parseDataContent(e.target.result);
+        setEmgHeaders(finalHeaders);
+        setEmgFileResult(trimmedColumns);
+        autoMap(finalHeaders, kinHeaders);
+        setErrorMessage(null);
+        if (interpolatedCount > 0) {
+          showToast(`⚠️ 偵測到 ${interpolatedCount} 筆 EMG 遺失數據，已自動線性插值修復！`);
+        }
+      } catch (err) { setErrorMessage(`EMG 解析失敗: ${err.message}`); }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleKinUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { finalHeaders, trimmedColumns, interpolatedCount } = parseDataContent(e.target.result);
+        setKinHeaders(finalHeaders);
+        setKinFileResult(trimmedColumns);
+
+        const trigIdx = finalHeaders.findIndex(h => h.toLowerCase().includes('trigger') || h.toLowerCase().includes('trig'));
+        setKinTrigColIdx(trigIdx !== -1 ? trigIdx : -1);
+
+        autoMap(emgHeaders, finalHeaders);
+
+        setErrorMessage(null);
+        if (interpolatedCount > 0) {
+          showToast(`⚠️ 偵測到 ${interpolatedCount} 筆 Kinematic 遺失數據，已自動線性插值修復！`);
+        }
+      } catch (err) { setErrorMessage(`Kinematic 解析失敗: ${err.message}`); }
+    };
+    reader.readAsText(file);
+  };
+
+  const buildCycleMetrics = (cycle, localEmgSR, localKinSR, kinAngleData, emgProcessedMap, currentKinMapping, kinFileResultObj, kinTIdx) => {
+    const emgSegmentsAll = {};
+    Object.entries(emgProcessedMap).forEach(([key, data]) => {
+      const calcEmgSegment = (sIdx, eIdx) => {
+        if (sIdx === null || eIdx === null || sIdx >= eIdx) return '';
+        const emgStart = Math.max(0, Math.floor((sIdx - kinTIdx) / localKinSR * localEmgSR));
+        const emgEnd = Math.min(data.filtered.length - 1, Math.floor((eIdx - kinTIdx) / localKinSR * localEmgSR));
+
+        let sumSq = 0, countRms = 0;
+        for(let i = emgStart; i <= emgEnd && i < data.filtered.length; i++) {
+          sumSq += Math.pow(data.filtered[i], 2);
+          countRms++;
+        }
+        return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '';
+      };
+
+      emgSegmentsAll[key] = {
+        'Down_Bow': calcEmgSegment(cycle.startIdx, cycle.peakIdx),
+        'Up_Bow': calcEmgSegment(cycle.peakIdx, cycle.endIdx),
+        'Overall': calcEmgSegment(cycle.startIdx, cycle.endIdx)
+      };
+    });
+
+    const kinPointsAll = {};
+    Object.entries(currentKinMapping).forEach(([key, colIdx]) => {
+      if (colIdx !== -1 && kinFileResultObj[colIdx]) {
+        const extraData = kinFileResultObj[colIdx];
+        const getKinValue = (idx) => {
+          if (idx === null || idx >= extraData.length) return '';
+          return +(extraData[idx]).toFixed(2);
+        };
+        kinPointsAll[key] = {
+          'Start_Pos': getKinValue(cycle.startIdx),
+          'Peak_Pos': getKinValue(cycle.peakIdx),
+          'End_Pos': getKinValue(cycle.endIdx),
+          'ROM': Math.abs(getKinValue(cycle.peakIdx) - getKinValue(cycle.startIdx)).toFixed(2)
+        };
+      }
+    });
+
+    const pkAngle = kinAngleData[cycle.peakIdx];
+
+    return {
+      ...cycle,
+      maxAngle: pkAngle.toFixed(1),
+      duration: +( (cycle.endIdx - cycle.startIdx) / localKinSR ).toFixed(2),
+      emgSegmentsAll,
+      kinPointsAll,
+    };
+  };
+
+  const processScaleTask = (customBaseline = appliedBaseline) => {
+    if (!emgFileResult || !kinFileResult) {
+      setErrorMessage("請先載入 EMG 與 KINEMATIC 兩個檔案！"); return;
+    }
+    if (kinAngleColIdx === -1) {
+      setErrorMessage("請指定主判定關節 (通常為 RHTPlaneOfElev)！"); return;
+    }
+
+    setErrorMessage(null); setAnalysisResult(null); setSelectedRepIdx(0);
+
+    const kinTriggerData = kinFileResult[kinTrigColIdx];
+    const kinAngleData = kinFileResult[kinAngleColIdx];
+
+    let kinTrigIdx = 0;
+    if (kinTrigColIdx !== -1 && kinTriggerData) {
+      for (let i = 0; i < kinTriggerData.length; i++) {
+        if (kinTriggerData[i] >= kinTrigThresh) { kinTrigIdx = i; break; }
+      }
+    }
+
+    // 1. 動態基線計算 (Dynamic Baseline)
+    let baseline = kinAngleData[0];
+    if (customBaseline) {
+      const sIdx = Math.max(0, Math.floor(customBaseline.startT * kinSR) + kinTrigIdx);
+      const eIdx = Math.min(kinAngleData.length - 1, Math.floor(customBaseline.endT * kinSR) + kinTrigIdx);
+      let sum = 0; let count = 0;
+      for(let i=sIdx; i<=eIdx; i++) { sum += kinAngleData[i]; count++; }
+      baseline = count > 0 ? sum / count : kinAngleData[0];
+    } else {
+      let baselineSum = 0;
+      let baselineCount = 0;
+      const startBaseIdx = Math.max(0, kinTrigIdx);
+      const endBaseIdx = Math.min(kinAngleData.length, startBaseIdx + kinBaselineFrames);
+      for (let i = startBaseIdx; i < endBaseIdx; i++) {
+        baselineSum += kinAngleData[i];
+        baselineCount++;
+      }
+      baseline = baselineCount > 0 ? baselineSum / baselineCount : kinAngleData[0];
+    }
+
+    const detectedCycles = [];
+    let scanIdx = Math.max(1, kinTrigIdx);
+
+    while (scanIdx < kinAngleData.length - kinOnsetConsecutive) {
+      // 1. Start: 斜率從 (+) 變為 (-) 的瞬間且必須連續超過 50 筆 (kinOnsetConsecutive) 後減前都是負號
+      let startIdx = -1;
+      for (let i = scanIdx; i < kinAngleData.length - kinOnsetConsecutive; i++) {
+        let isConsecutiveDown = true;
+        for (let j = 0; j < kinOnsetConsecutive; j++) {
+          if (kinAngleData[i + j] - kinAngleData[i + j - 1] >= 0) {
+            isConsecutiveDown = false;
+            break;
+          }
+        }
+        if (isConsecutiveDown) {
+          startIdx = i - 1; // 轉折點 (最高峰)
+          break;
+        }
+      }
+
+      if (startIdx === -1) break;
+
+      // 2. Turnaround: 在下弓區間內，斜率從連續的 (-) 變為連續的 (+) 的瞬間
+      let turnaroundIdx = -1;
+      let minVal = kinAngleData[startIdx];
+      let minIdx = startIdx;
+
+      for (let i = startIdx + 1; i < kinAngleData.length - kinUpConsecutive; i++) {
+         // 隨時更新這段下坡的絕對最低點
+         if (kinAngleData[i] < minVal) {
+             minVal = kinAngleData[i];
+             minIdx = i;
+         }
+
+         // 檢查是否出現連續向上
+         let isConsecutiveUp = true;
+         for (let j = 0; j < kinUpConsecutive; j++) {
+             if (kinAngleData[i + j] - kinAngleData[i + j - 1] <= 0) {
+                 isConsecutiveUp = false;
+                 break;
+             }
+         }
+         if (isConsecutiveUp) {
+             // 一旦確認反轉向上，剛才記錄的最低點就是 Turnaround (峰谷)
+             turnaroundIdx = minIdx;
+             break;
+         }
+      }
+
+      if (turnaroundIdx === -1) turnaroundIdx = minIdx;
+
+      // 3. End: 在 Turnaround 後，訊號回升且斜率從 (+) 變為 (-) 的瞬間
+      // 即為下一個連續下降的起點
+      let endIdx = -1;
+      for (let i = turnaroundIdx + 1; i < kinAngleData.length - kinOnsetConsecutive; i++) {
+         let isConsecutiveDown = true;
+         for (let j = 0; j < kinOnsetConsecutive; j++) {
+             if (kinAngleData[i + j] - kinAngleData[i + j - 1] >= 0) {
+                 isConsecutiveDown = false;
+                 break;
+             }
+         }
+         if (isConsecutiveDown) {
+             endIdx = i - 1;
+             break;
+         }
+      }
+
+      if (endIdx === -1) {
+         let maxVal = -Infinity;
+         for (let i = turnaroundIdx; i < kinAngleData.length; i++) {
+             if (kinAngleData[i] > maxVal) {
+                 maxVal = kinAngleData[i];
+                 endIdx = i;
+             }
+         }
+      }
+
+      const durationSamples = endIdx - startIdx;
+      const minDurationSamples = kinSR * (speedType === 'Fast' ? 0.1 : 0.2);
+
+      if (durationSamples > minDurationSamples && turnaroundIdx > startIdx && endIdx > turnaroundIdx) {
+        detectedCycles.push({ startIdx, peakIdx: turnaroundIdx, endIdx });
+      }
+
+      // 4. 無縫接軌：高峰點成為下一個循環的 scanIdx
+      scanIdx = endIdx;
+      if (endIdx >= kinAngleData.length - 1) break;
+    }
+
+    if (detectedCycles.length === 0) {
+      setErrorMessage(`無法找出符合條件的完整動作過程。請確認下降啟動參數(${kinOnsetConsecutive})。`);
+      return;
+    }
+
+    const emgProcessed = {};
+    Object.entries(emgMapping).forEach(([key, colIdx]) => {
+      if (colIdx !== -1 && emgFileResult[colIdx]) {
+        let raw = emgFileResult[colIdx];
+        if (useHampel) {
+          raw = hampelFilter(raw, hampelWindow, hampelSigma);
+        }
+        if (notchFilter) {
+          raw = biquadFilter(raw, 'notch', 60, emgSR);
+        }
+        let currentBpHigh = ecgFilter ? Math.max(30, bpHigh) : bpHigh;
+        const filtered = bandpassFilter(raw, currentBpHigh, bpLow, emgSR);
+        const rectified = new Float64Array(filtered.length);
+        for(let i=0; i<filtered.length; i++) rectified[i] = Math.abs(filtered[i]);
+        const envelope = biquadFilter(rectified, 'lowpass', lpfCutoff, emgSR);
+        emgProcessed[key] = { filtered, envelope };
+      }
+    });
+
+    const cycleMetrics = detectedCycles.map((cycle, index) => {
+      const baseCycle = {
+        id: index + 1,
+        startIdx: cycle.startIdx,
+        peakIdx: cycle.peakIdx,
+        endIdx: cycle.endIdx,
+        tStart: +( (cycle.startIdx - kinTrigIdx) / kinSR ).toFixed(3),
+        tPeak: +( (cycle.peakIdx - kinTrigIdx) / kinSR ).toFixed(3),
+        tEnd: +( (cycle.endIdx - kinTrigIdx) / kinSR ).toFixed(3),
+      };
+      return buildCycleMetrics(baseCycle, emgSR, kinSR, kinAngleData, emgProcessed, kinMapping, kinFileResult, kinTrigIdx);
+    });
+
+    const chartData = [];
+    const fullDurationSamples = kinAngleData.length;
+    const MAX_CHART_POINTS = 4000;
+    const step = Math.max(1, Math.floor(fullDurationSamples / MAX_CHART_POINTS));
+
+    for (let i = 0; i < fullDurationSamples; i += step) {
+      const t = (i - kinTrigIdx) / kinSR;
+      const matchingEmgIdx = Math.floor(t * emgSR);
+
+      const row = {
+         time: Math.round(t * 1000) / 1000,
+         angleMain: Math.round(kinAngleData[i] * 100) / 100
+      };
+
+      Object.entries(emgProcessed).forEach(([k, d]) => {
+         if (matchingEmgIdx >= 0 && matchingEmgIdx < d.envelope.length) {
+            row[`emg_${k}`] = Math.round(d.envelope[matchingEmgIdx] * 10000) / 10000;
+         }
+      });
+      Object.entries(kinMapping).forEach(([k, colIdx]) => {
+         if (colIdx !== -1 && kinFileResult[colIdx]) {
+            row[`kin_${k}`] = Math.round(kinFileResult[colIdx][i] * 100) / 100;
+         }
+      });
+      chartData.push(row);
+    }
+
+    setAnalysisResult({ chartData, cycles: cycleMetrics, emgProcessed, kinTrigIdx, baseline });
+  };
+
+  const showToast = (msg) => {
+    setToastMessage(msg); setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleBatchSave = () => {
+    if (!analysisResult || !analysisResult.cycles[selectedRepIdx]) return;
+    const cycle = analysisResult.cycles[selectedRepIdx];
+    let hasError = false;
+    let savedEmg = 0;
+    let savedKin = 0;
+
+    const conditionLabel = `${speedType}_${scaleType}`;
+
+    const newEmgData = { ...taskScaleData };
+    Object.entries(cycle.emgSegmentsAll).forEach(([key, segs]) => {
+       if (Object.values(segs).some(v => v !== '')) {
+           const compKey = `${key} (${conditionLabel})`;
+           const current = newEmgData[compKey] || [];
+           if (current.length < 3) {
+              newEmgData[compKey] = [...current, { ...segs }];
+              savedEmg++;
+           } else {
+              hasError = true;
+           }
+       }
+    });
+
+    const newAngleData = { ...taskScaleAngleData };
+    Object.entries(cycle.kinPointsAll).forEach(([key, pts]) => {
+       if (Object.values(pts).some(v => v !== '')) {
+           const compKey = `${key} (${conditionLabel})`;
+           const current = newAngleData[compKey] || [];
+           if (current.length < 3) {
+              newAngleData[compKey] = [...current, { ...pts }];
+              savedKin++;
+           } else {
+              hasError = true;
+           }
+       }
+    });
+
+    setTaskScaleData(newEmgData);
+    setTaskScaleAngleData(newAngleData);
+
+    if (hasError) {
+       showToast(`⚠️ 部分通道在該條件 (${conditionLabel}) 下已達 3 次上限！其餘已寫入。`);
+    } else {
+       showToast(`✅ 成功批次寫入 ${savedEmg} 個 EMG 與 ${savedKin} 個 Kinematics 數據！`);
+    }
+  };
+
+  const handleNextRepetition = () => {
+    if (analysisResult && selectedRepIdx < analysisResult.cycles.length - 1) {
+      setSelectedRepIdx(selectedRepIdx + 1);
+    } else {
+      showToast("⚠️ 後續沒有找到更多循環動作了！");
+    }
+  };
+
+  const handlePrevRepetition = () => {
+    if (analysisResult && selectedRepIdx > 0) {
+      setSelectedRepIdx(selectedRepIdx - 1);
+    } else {
+      showToast("⚠️ 已經是第一個循環動作了！");
+    }
+  };
+
+  const handleChartMouseDown = useCallback((e) => {
+    if (e) {
+      const time = e.activeLabel !== undefined ? e.activeLabel : e.activePayload?.[0]?.payload?.time;
+      if (time === undefined || time === null) return;
+
+      if (isManualBaselineMode) {
+        setManualBaseStart(time);
+        setManualBaseEnd(time);
+        setIsSelectingBase(true);
+      } else if (analysisResult && analysisResult.cycles[selectedRepIdx]) {
+        const cycle = analysisResult.cycles[selectedRepIdx];
+        const dStart = Math.abs(time - cycle.tStart);
+        const dPeak = Math.abs(time - cycle.tPeak);
+        const dEnd = Math.abs(time - cycle.tEnd);
+
+        const minD = Math.min(dStart, dPeak, dEnd);
+        const tolerance = 1.0;
+
+        if (minD < tolerance) {
+          if (minD === dStart) setDraggingMarker('start');
+          else if (minD === dPeak) setDraggingMarker('peak');
+          else if (minD === dEnd) setDraggingMarker('end');
+        }
+      }
+    }
+  }, [isManualBaselineMode, analysisResult, selectedRepIdx]);
+
+  const handleChartMouseMove = useCallback((e) => {
+    if (isManualBaselineMode && isSelectingBase) {
+      if (e && e.activeLabel !== undefined) setManualBaseEnd(e.activeLabel);
+      return;
+    }
+    if (!draggingMarker) return;
+    if (e && e.activeLabel !== undefined) {
+       const time = e.activeLabel;
+       setAnalysisResult(prev => {
+          if (!prev) return prev;
+          const newCycles = [...prev.cycles];
+          const cycle = { ...newCycles[selectedRepIdx] };
+
+          const idx = Math.floor(time * kinSR) + prev.kinTrigIdx;
+          const maxIdx = kinFileResult[kinAngleColIdx].length - 1;
+
+          if (draggingMarker === 'start') {
+             if (idx < cycle.peakIdx) { cycle.startIdx = Math.max(0, idx); cycle.tStart = time; }
+          } else if (draggingMarker === 'peak') {
+             if (idx > cycle.startIdx && idx < cycle.endIdx) { cycle.peakIdx = idx; cycle.tPeak = time; }
+          } else if (draggingMarker === 'end') {
+             if (idx > cycle.peakIdx) { cycle.endIdx = Math.min(maxIdx, idx); cycle.tEnd = time; }
+          }
+
+          const updatedCycle = buildCycleMetrics(
+            cycle, emgSR, kinSR, kinFileResult[kinAngleColIdx],
+            prev.emgProcessed, kinMapping, kinFileResult,
+            prev.kinTrigIdx
+          );
+
+          newCycles[selectedRepIdx] = updatedCycle;
+          return { ...prev, cycles: newCycles };
+       });
+    }
+  }, [draggingMarker, selectedRepIdx, kinSR, emgSR, kinFileResult, kinAngleColIdx, kinMapping, isManualBaselineMode, isSelectingBase]);
+
+  const handleChartMouseUp = useCallback(() => {
+    setIsSelectingBase(false);
+    setDraggingMarker(null);
+  }, []);
+
+  const getPreviewMeanRms = () => {
+    if (!analysisResult || !analysisResult.cycles[selectedRepIdx]) return '-';
+    if (!previewEmgKey || !analysisResult.emgProcessed[previewEmgKey]) return '-';
+
+    const cycle = analysisResult.cycles[selectedRepIdx];
+    const emgData = analysisResult.emgProcessed[previewEmgKey].filtered;
+    const emgStart = Math.max(0, Math.floor((cycle.startIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
+    const emgEnd = Math.min(emgData.length - 1, Math.floor((cycle.endIdx - analysisResult.kinTrigIdx) / kinSR * emgSR));
+
+    let sumSq = 0, countRms = 0;
+    for(let i=emgStart; i<=emgEnd && i<emgData.length; i++) {
+       sumSq += Math.pow(emgData[i], 2);
+       countRms++;
+    }
+    return countRms > 0 ? +(Math.sqrt(sumSq / countRms)).toFixed(4) : '-';
+  };
+
+  const currentConditionLabel = `${speedType}_${scaleType}`;
+  const currentSavedCount = Object.keys(taskScaleAngleData).length > 0
+    ? (taskScaleAngleData[`${previewKinKey || OPEN_STRING_MAPPINGS.kin[0].key} (${currentConditionLabel})`]?.length || 0)
+    : 0;
+
+  const currentMetrics = analysisResult?.cycles[selectedRepIdx];
+  const emgKeys = ['Down_Bow', 'Up_Bow', 'Overall'];
+  const kinKeys = ['Start_Pos', 'Peak_Pos', 'End_Pos', 'ROM'];
+
+  return (
+    <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-800 animate-in fade-in duration-500 relative" onMouseUp={handleChartMouseUp} onMouseLeave={handleChartMouseUp}>
+      {toastMessage && (
+        <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
+          <span className="font-bold text-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      <header className="max-w-7xl mx-auto flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 gap-4">
+        <div className="flex items-center gap-4 shrink-0">
+          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-800"><ArrowLeft size={24} /></button>
+          <div className="bg-blue-500 p-3 rounded-2xl shadow-lg"><ListMusic className="text-white w-6 h-6" /></div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">音階演奏批次分析 (Scale Task)</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold">受測者: {activeSubjectId}</span>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Bilateral Scale Bowing Cycle Detection</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-sm cursor-pointer text-sm font-bold shrink-0 ${emgFileResult ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
+            <Upload size={18} /> {emgFileResult ? '已載入 EMG' : '載入 EMG 檔'}
+            <input type="file" className="hidden" accept=".csv,.txt" onChange={handleEmgUpload} />
+          </label>
+          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-sm cursor-pointer text-sm font-bold shrink-0 ${kinFileResult ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>
+            <Upload size={18} /> {kinFileResult ? '已載入 KINEMATIC' : '載入 KINEMATIC 檔'}
+            <input type="file" className="hidden" accept=".csv,.txt" onChange={handleKinUpload} />
+          </label>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto space-y-6">
+        {errorMessage && ( <div className="bg-rose-50 border border-rose-200 text-rose-700 px-6 py-4 rounded-2xl font-bold flex items-center gap-3"><Info size={20} /> {errorMessage}</div> )}
+
+        {emgFileResult && kinFileResult && (
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+
+              <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-indigo-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><ListMusic size={14} className="shrink-0" /> 任務參數設定</div>
+                  <p className="text-[9px] text-indigo-500 mb-2 leading-tight">Fast/Slow 與 演奏音階</p>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">速度 (Speed):</span>
+                    <select value={speedType} onChange={e=>setSpeedType(e.target.value)} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      <option value="Fast">Fast (快)</option>
+                      <option value="Slow">Slow (慢)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">音階 (Scale Type):</span>
+                    <select value={scaleType} onChange={e=>setScaleType(e.target.value)} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      <option value="A_Major">A Major</option>
+                      <option value="E_Major">E Major</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block mt-1">目前組合標籤:</span>
+                    <div className="w-full p-1.5 rounded-lg border border-indigo-200 text-xs font-bold text-center text-indigo-700 bg-indigo-50">{speedType}_{scaleType}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><Activity size={14} className="shrink-0" /> 硬體同步設定</div>
+                  <p className="text-[9px] text-slate-500 mb-2 leading-tight">Kinematic 接收 Trigger 之點 = EMG 第 0 筆</p>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div className="col-span-2"><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Trigger 通道:</span><select value={kinTrigColIdx} onChange={e=>setKinTrigColIdx(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white"><option value="-1">無</option>{kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}</select></div>
+                  <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Trigger 閥值:</span><input type="number" step="0.5" value={kinTrigThresh} onChange={e=>setKinTrigThresh(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-center text-rose-600 bg-white" disabled={kinTrigColIdx === -1}/></div>
+                  <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Kin SR (Hz):</span><input type="number" value={kinSR} onChange={e=>setKinSR(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-center bg-white" /></div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/50 flex flex-col justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-800 mb-0.5 uppercase tracking-wide flex items-center gap-2"><Waves size={14} className="shrink-0" /> EMG 取樣設定</div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  <div className="col-span-2 flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-semibold text-slate-500">SR (Hz):</span>
+                    <input type="number" value={emgSR} onChange={e=>setEmgSR(Number(e.target.value))} className="w-16 p-1 rounded-lg border border-slate-200 text-xs font-bold text-center bg-white" />
+                  </div>
+
+                  <div className="col-span-2 flex flex-col gap-2 p-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <label className="flex items-center gap-2 text-[11px] font-bold text-indigo-700 cursor-pointer">
+                      <input type="checkbox" checked={useHampel} onChange={e=>setUseHampel(e.target.checked)} className="accent-indigo-600 w-3 h-3"/>
+                      去突波濾波器 (Hampel Filter)
+                    </label>
+                    {useHampel && (
+                      <div className="flex items-center justify-between gap-2 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100">
+                        <div className="flex items-center gap-1">
+                           <span className="text-[10px] text-indigo-600 font-bold">Window:</span>
+                           <input type="number" value={hampelWindow} onChange={e=>setHampelWindow(Number(e.target.value))} className="w-10 bg-white border border-indigo-200 rounded text-[10px] font-bold text-center outline-none text-indigo-900" title="運算窗格大小"/>
+                        </div>
+                        <div className="flex items-center gap-1">
+                           <span className="text-[10px] text-indigo-600 font-bold">Alpha(σ):</span>
+                           <input type="number" step="0.5" value={hampelSigma} onChange={e=>setHampelSigma(Number(e.target.value))} className="w-10 bg-white border border-indigo-200 rounded text-[10px] font-bold text-center outline-none text-indigo-900" title="判定異常的標準差倍數"/>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-span-2 flex flex-wrap items-center justify-start gap-3 mt-1">
+                    <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer"><input type="checkbox" checked={notchFilter} onChange={e=>setNotchFilter(e.target.checked)} className="accent-indigo-600"/> 60Hz 陷波</label>
+                    <label className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer"><input type="checkbox" checked={ecgFilter} onChange={e=>setEcgFilter(e.target.checked)} className="accent-indigo-600"/> 抑制 ECG</label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50/50 p-3 rounded-2xl border border-amber-100/50 flex flex-col justify-between">
+                <div className="text-sm font-bold text-amber-800 mb-2 uppercase tracking-wide flex items-center gap-2"><Crosshair size={14} className="shrink-0" /> 主判定關節 (預設 RHTPlane)</div>
+                <div className="space-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 mb-0.5 block">Kin 主角度:</span>
+                    <select value={kinAngleColIdx} onChange={e=>setKinAngleColIdx(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white">
+                      {kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="開頭計算基準線的取樣筆數">基線取樣(筆):</span><input type="number" value={kinBaselineFrames} onChange={e=>setKinBaselineFrames(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                    <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="連續下降幾筆作為任務起點">下降連續(筆):</span><input type="number" value={kinOnsetConsecutive} onChange={e=>setKinOnsetConsecutive(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                    <div><span className="text-[10px] font-semibold text-slate-500 mb-0.5 block line-clamp-1" title="連續上升幾筆確認為谷底反轉">反轉確認(筆):</span><input type="number" value={kinUpConsecutive} onChange={e=>setKinUpConsecutive(Number(e.target.value))} className="w-full p-1.5 rounded-lg border border-amber-300 text-xs font-black text-amber-700 text-center bg-white" /></div>
+                  </div>
+                  <p className="text-[9px] text-amber-600 mt-2 italic leading-tight">音階分析使用嚴格斜率判定邏輯：連續下(起) ➜ 連續上(定中點) ➜ 連續下(無縫接軌)。</p>
+                </div>
+              </div>
+
+              <div className="flex items-end shrink-0">
+                <button onClick={() => processScaleTask(appliedBaseline)} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 h-full min-h-[84px] rounded-2xl font-bold transition-all shadow-lg active:scale-95 flex flex-col items-center justify-center gap-2 hover:shadow-blue-200">
+                  <Activity size={24} /> <span className="text-sm">套用分析</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-slate-200 pb-3 gap-3">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Layers size={16} className="text-indigo-500" /> 雙側通道對應 (Bilateral Mapping)</h4>
+                <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對頸部/雙側肩膀及所有肌肉。</div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 (10 通道)</h5>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => (
+                         <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-indigo-100 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
+                            <select value={emgMapping[m.key] ?? -1} onChange={e => setEmgMapping({...emgMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-indigo-900 bg-indigo-50/50 p-1 rounded border-none outline-none">
+                               <option value="-1">忽略</option>
+                               {emgHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                            </select>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+                <div>
+                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 (10 通道)</h5>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => (
+                         <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-emerald-100 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-500 mb-1 line-clamp-1">{m.label}</span>
+                            <select value={kinMapping[m.key] ?? -1} onChange={e => setKinMapping({...kinMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-emerald-900 bg-emerald-50/50 p-1 rounded border-none outline-none">
+                               <option value="-1">忽略</option>
+                               {kinHeaders.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                            </select>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {analysisResult && currentMetrics && (
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+
+            {/* 一鍵寫入資料庫大按鈕 */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row justify-between items-center mb-6">
+              <div className="mb-4 md:mb-0">
+                <h3 className="font-black text-xl flex items-center gap-2"><Database size={24} /> 批次寫入資料庫 ({speedType}_{scaleType})</h3>
+                <p className="text-sm text-blue-100 mt-1 font-medium">將雙側所有肌肉與關節，依照 Down-bow / Up-bow 寫入 Task Database。</p>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-xs font-bold bg-white/20 px-3 py-1 rounded-full shadow-sm">此條件已存 {currentSavedCount}/3 次</span>
+                <button onClick={handleBatchSave} className="bg-white text-blue-800 px-8 py-3 rounded-2xl font-black shadow-xl hover:scale-105 active:scale-95 transition-all whitespace-nowrap">
+                  儲存此條件結果
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard title={`預覽肌肉 (${previewEmgKey || '未選擇'})`} value={getPreviewMeanRms()} unit="mV" icon={<BarChart className="text-blue-500" />} />
+              <MetricCard title={`ROM (${kinHeaders[kinAngleColIdx]})`} value={currentMetrics.kinPointsAll?.[previewKinKey]?.['ROM'] || '-'} unit="°" icon={<Layers className="text-amber-500" />} />
+              <MetricCard title="循環總時長 (Start to End)" value={currentMetrics.duration} unit="s" icon={<Info className="text-indigo-500" />} />
+              <div className="bg-slate-800 p-4 rounded-3xl border border-slate-700 shadow-sm flex flex-col justify-center items-center text-white relative overflow-hidden group">
+                <div className="absolute inset-0 bg-blue-500/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                <span className="text-xs font-bold text-slate-400 mb-1 relative z-10">目前檢視循環</span>
+                <span className="text-3xl font-black relative z-10">{currentMetrics.id} <span className="text-sm font-medium text-slate-400">/ {analysisResult.cycles.length}</span></span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
+                <div className="absolute -right-6 -top-6 text-indigo-500/10"><Activity size={100} /></div>
+                <div>
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div>
+                      <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2"><Eye size={18} className="text-indigo-600"/> EMG 區間預覽</h3>
+                    </div>
+                    <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-indigo-300 bg-white font-bold text-indigo-900 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mb-2 relative z-10">
+                    {emgKeys.map(phase => (
+                      <div key={phase} className="bg-white rounded-xl p-2 text-center border border-indigo-100 shadow-sm">
+                        <div className={`text-[10px] font-bold mb-1 ${phase.includes('Down') ? 'text-amber-500' : (phase.includes('Up') ? 'text-emerald-500' : 'text-blue-500')}`}>{phase.replace('_', ' ')}</div>
+                        <div className="text-sm font-black font-mono text-indigo-700">{currentMetrics.emgSegmentsAll?.[previewEmgKey]?.[phase] || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-3xl flex flex-col justify-between shadow-sm relative overflow-hidden">
+                <div className="absolute -right-6 -top-6 text-emerald-500/10"><Eye size={100} /></div>
+                <div>
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div>
+                      <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2"><Eye size={18} className="text-emerald-600"/> 觀察關節預覽</h3>
+                    </div>
+                    <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 mb-2 relative z-10">
+                    {kinKeys.map(phase => (
+                      <div key={phase} className="bg-white rounded-xl p-2 text-center border border-emerald-100 shadow-sm">
+                        <div className={`text-[10px] font-bold mb-1 ${phase.includes('ROM') ? 'text-blue-500' : 'text-emerald-500'}`}>{phase.replace('_', ' ')}</div>
+                        <div className="text-[12px] font-black font-mono text-emerald-700">{currentMetrics.kinPointsAll?.[previewKinKey]?.[phase] || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-4 gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-md font-bold text-slate-700 flex items-center gap-2">
+                    <Waves size={18} className="text-indigo-500" /> 同步分析圖表預覽 (Scale Cycle 視覺化)
+                  </h3>
+                  <div className="flex items-center gap-4 text-xs font-bold mt-2">
+                     <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#f59e0b] opacity-30 rounded-sm"></div> 下弓階段 (Down-Bow)</div>
+                     <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#10b981] opacity-30 rounded-sm"></div> 上弓階段 (Up-Bow)</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* 控制與框選區 */}
+                  <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-2xl border border-amber-200 shadow-sm">
+                    <span className="text-xs font-bold text-amber-800">1. 手動設定基線</span>
+                    <label className="flex items-center gap-1 text-[11px] font-bold text-amber-700 cursor-pointer bg-white px-2 py-1 rounded-lg border border-amber-300">
+                      <input type="checkbox" checked={isManualBaselineMode} onChange={e=>setIsManualBaselineMode(e.target.checked)} className="accent-amber-600"/>
+                      啟用拖曳選取
+                    </label>
+                    {manualBaseStart !== null && manualBaseEnd !== null && (
+                      <div className="flex items-center gap-2 ml-2">
+                        <button onClick={() => { setIsManualBaselineMode(false); setManualBaseStart(null); setManualBaseEnd(null); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded-lg font-bold text-xs transition-colors">取消</button>
+                        <button onClick={() => {
+                          if (manualBaseStart !== null && manualBaseEnd !== null) {
+                            const newBaseline = { startT: Math.min(manualBaseStart, manualBaseEnd), endT: Math.max(manualBaseStart, manualBaseEnd) };
+                            setAppliedBaseline(newBaseline);
+                            processScaleTask(newBaseline);
+                            setIsManualBaselineMode(false);
+                            setToastMessage("✅ 基準重設成功！圖表已重新計算。");
+                            setTimeout(() => setToastMessage(null), 3000);
+                          }
+                        }} className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg font-bold shadow-sm active:scale-95 text-xs transition-colors">套用</button>
+                      </div>
+                    )}
+                    {appliedBaseline && !isManualBaselineMode && (
+                       <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">已套用自訂基線</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
+                    <button
+                      onClick={() => {
+                         if(window.confirm('確定要清除所有已加入的循環嗎？')) {
+                            setAnalysisResult({...analysisResult, cycles: []});
+                            setSelectedRepIdx(0);
+                         }
+                      }}
+                      className="text-rose-500 hover:text-rose-700 px-2 text-xs font-bold transition-colors mr-2"
+                    >
+                      清空所有循環
+                    </button>
+                    <button
+                      onClick={handlePrevRepetition}
+                      disabled={selectedRepIdx <= 0}
+                      className={`px-4 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1 text-xs ${
+                        selectedRepIdx > 0
+                          ? 'bg-white hover:bg-slate-50 text-slate-700 active:scale-95 border border-slate-200'
+                          : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-transparent'
+                      }`}
+                    >
+                      <ArrowLeft size={14} /> 上一筆
+                    </button>
+                    <button
+                      onClick={handleNextRepetition}
+                      disabled={!analysisResult || selectedRepIdx >= analysisResult.cycles.length - 1}
+                      className={`px-4 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1 text-xs ${
+                        analysisResult && selectedRepIdx < analysisResult.cycles.length - 1
+                          ? 'bg-slate-800 hover:bg-slate-900 text-white active:scale-95'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      下一筆 <ArrowRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6 select-none" style={{ cursor: isManualBaselineMode ? 'crosshair' : (draggingMarker ? 'col-resize' : 'default') }} draggable={false}>
+                <div>
+                  <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-indigo-400">
+                    <p className="text-xs font-bold text-slate-500">EMG 圖表預覽通道:</p>
+                    <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 font-bold text-indigo-800 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                    <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
+                  </div>
+                  <div className="h-[220px] w-full select-none" draggable={false}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={analysisResult.chartData} syncId="scaleSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
+                          <defs><linearGradient id="emgFillScale" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} hide />
+                          <YAxis tick={{fontSize: 10}} width={40} />
+                          <Tooltip contentStyle={{fontSize:'12px', borderRadius:'12px'}} labelFormatter={(l)=>`Time: ${l}s`} />
+
+                          <ReferenceLine x={0} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" label={{ value: '硬體同步點', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
+
+                          {analysisResult.cycles.flatMap((cycle, idx) => {
+                            const elements = [
+                              <ReferenceArea key={`db-emg-${idx}`} x1={cycle.tStart} x2={cycle.tPeak} fill="#f59e0b" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />,
+                              <ReferenceArea key={`ub-emg-${idx}`} x1={cycle.tPeak} x2={cycle.tEnd} fill="#10b981" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />
+                            ];
+                            if (selectedRepIdx === idx) {
+                              elements.push(<ReferenceLine key={`peak-emg-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Turnaround', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                              elements.push(<ReferenceLine key={`start-emg-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                              elements.push(<ReferenceLine key={`end-emg-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                            }
+                            return elements;
+                          })}
+
+                          {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
+                             <ReferenceArea x1={Math.min(manualBaseStart, manualBaseEnd)} x2={Math.max(manualBaseStart, manualBaseEnd)} fill="#f59e0b" fillOpacity={0.3} />
+                          )}
+
+                          <Area name={`EMG ${previewEmgKey}`} type="monotone" dataKey={`emg_${previewEmgKey}`} stroke="#4f46e5" fill="url(#emgFillScale)" strokeWidth={2} isAnimationActive={false} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-amber-500">
+                    <p className="text-xs font-bold text-slate-500">Kinematic 觀察角度:</p>
+                    <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1 rounded-lg border border-emerald-200 bg-emerald-50 font-bold text-emerald-800 text-xs focus:outline-none shadow-sm cursor-pointer">
+                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="h-[280px] w-full select-none" draggable={false}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={analysisResult.chartData} syncId="scaleSync" onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} tick={{fontSize: 10}} label={{value:'Time (s)', position:'insideBottom', offset:-5, fontSize:10, fill:'#94a3b8'}} />
+                        <YAxis domain={['auto', 'auto']} tick={{fontSize: 10}} width={40} />
+                        <Tooltip contentStyle={{fontSize:'12px', borderRadius:'12px'}} labelFormatter={(l)=>`Time: ${l}s`} />
+                        <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} verticalAlign="top" height={36}/>
+
+                        <ReferenceLine x={0} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" label={{ value: '硬體同步點', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
+
+                        <ReferenceLine y={analysisResult.baseline} stroke="#3b82f6" strokeDasharray="3 3" label={{value: `Baseline (${analysisResult.baseline?.toFixed(1)}°)`, position: 'insideTopLeft', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold'}} />
+
+                        {analysisResult.cycles.flatMap((cycle, idx) => {
+                          const elements = [
+                            <ReferenceArea key={`db-kin-${idx}`} x1={cycle.tStart} x2={cycle.tPeak} fill="#f59e0b" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />,
+                            <ReferenceArea key={`ub-kin-${idx}`} x1={cycle.tPeak} x2={cycle.tEnd} fill="#10b981" fillOpacity={selectedRepIdx === idx ? 0.25 : 0.05} />
+                          ];
+                          if (selectedRepIdx === idx) {
+                            elements.push(<ReferenceLine key={`peak-kin-${idx}`} x={cycle.tPeak} stroke="#ef4444" strokeWidth={3} strokeDasharray="5 5" style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Turnaround', position:'insideTopLeft', fill:'#ef4444', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`start-kin-${idx}`} x={cycle.tStart} stroke="#3b82f6" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'Start', position:'insideBottomLeft', fill:'#3b82f6', fontSize:10, fontWeight:'bold'}} />);
+                            elements.push(<ReferenceLine key={`end-kin-${idx}`} x={cycle.tEnd} stroke="#10b981" strokeWidth={3} style={{ cursor: 'col-resize', pointerEvents: 'none' }} label={{value:'End', position:'insideBottomRight', fill:'#10b981', fontSize:10, fontWeight:'bold'}} />);
+                          }
+                          return elements;
+                        })}
+
+                        {isManualBaselineMode && manualBaseStart !== null && manualBaseEnd !== null && (
+                             <ReferenceArea x1={Math.min(manualBaseStart, manualBaseEnd)} x2={Math.max(manualBaseStart, manualBaseEnd)} fill="#f59e0b" fillOpacity={0.3} />
+                        )}
+
+                        <Line name={`主判定角度: ${kinHeaders[kinAngleColIdx]}`} type="monotone" dataKey="angleMain" stroke="#f59e0b" strokeWidth={3} dot={false} isAnimationActive={false} />
+                        <Line name={`預覽觀察角度: ${previewKinKey}`} type="monotone" dataKey={`kin_${previewKinKey}`} stroke="#0ea5e9" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
+                        <Brush dataKey="time" height={30} stroke="#94a3b8" fill="#f8fafc" travellerWidth={10} tickFormatter={(v) => `${v}s`} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
 // --- 擴充模組 Placeholder ---
 const ModulePlaceholder = ({ title, icon, description, onBack }) => (
   <div className="min-h-screen bg-[#f1f5f9] p-6 font-sans text-slate-800 animate-in fade-in duration-500">
@@ -2415,7 +4452,9 @@ const GlobalDatabaseOverview = ({ subjects, setSubjects, activeSubjectId, setAct
                 const mvicProg = getMvicProgress(data.mvicData);
                 const liftEmgCnt = getTaskCount(data.taskLiftEmgData);
                 const liftKinCnt = getTaskCount(data.taskLiftAngleData);
-                const otherTaskCnt = getTaskCount(data.taskOpenStringData) + getTaskCount(data.taskScaleData) + getTaskCount(data.taskMusicData);
+                const otherTaskCnt = getTaskCount(data.taskOpenStringData) + getTaskCount(data.taskOpenStringAngleData)
+                  + getTaskCount(data.taskScaleData) + getTaskCount(data.taskScaleAngleData)
+                  + getTaskCount(data.taskMusicData) + getTaskCount(data.taskMusicAngleData);
 
                 return (
                   <tr key={id} className={`hover:bg-slate-50/80 transition-colors ${isActive ? 'bg-indigo-50/40' : ''}`}>
@@ -2478,9 +4517,12 @@ const getEmptySubjectData = () => ({
   mvicData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}),
   taskLiftEmgData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}),
   taskLiftAngleData: {},
-  taskOpenStringData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}),
-  taskScaleData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {}),
-  taskMusicData: MUSCLE_LIST.reduce((acc, muscle) => ({ ...acc, [muscle]: [] }), {})
+  taskOpenStringData: {},
+  taskOpenStringAngleData: {},
+  taskScaleData: {},
+  taskScaleAngleData: {},
+  taskMusicData: {},
+  taskMusicAngleData: {}
 });
 
 const App = () => {
@@ -2577,12 +4619,18 @@ const App = () => {
   
   const taskOpenStringData = subjects[activeSubjectId].taskOpenStringData;
   const setTaskOpenStringData = createSetter('taskOpenStringData');
-  
+  const taskOpenStringAngleData = subjects[activeSubjectId].taskOpenStringAngleData;
+  const setTaskOpenStringAngleData = createSetter('taskOpenStringAngleData');
+
   const taskScaleData = subjects[activeSubjectId].taskScaleData;
   const setTaskScaleData = createSetter('taskScaleData');
-  
+  const taskScaleAngleData = subjects[activeSubjectId].taskScaleAngleData;
+  const setTaskScaleAngleData = createSetter('taskScaleAngleData');
+
   const taskMusicData = subjects[activeSubjectId].taskMusicData;
   const setTaskMusicData = createSetter('taskMusicData');
+  const taskMusicAngleData = subjects[activeSubjectId].taskMusicAngleData;
+  const setTaskMusicAngleData = createSetter('taskMusicAngleData');
 
   const handleExportExcel = async () => {
     try {
@@ -2687,54 +4735,86 @@ const App = () => {
         XLSX.utils.book_append_sheet(wb, wsLiftingAngles, "Lifting_Angles");
       }
 
-      // Summary (跨所有受測者)
+      // 演奏任務 (空弦/音階) 匯出工具函式：EMG 使用 Down_Bow/Up_Bow/Overall，角度使用 Start/Peak/End/ROM
+      const buildPerformanceRows = (dataKey, phases, labelKey) => {
+        const rows = [];
+        Object.entries(subjects).forEach(([subjectId, subjData]) => {
+          const dataObj = subjData[dataKey] || {};
+          const savedKeys = Object.keys(dataObj).filter(k => dataObj[k].length > 0);
+          savedKeys.forEach(key => {
+            const trials = dataObj[key] || [];
+            const row = { Subject: subjectId, [labelKey]: key };
+
+            [0, 1, 2].forEach(tIdx => {
+              const trial = trials[tIdx] || {};
+              phases.forEach(phase => {
+                row[`T${tIdx + 1}_${phase}`] = trial[phase] !== undefined ? trial[phase] : '';
+              });
+            });
+
+            phases.forEach(phase => {
+              const vals = trials.map(t => t[phase]).filter(v => v !== undefined && v !== '');
+              row[`Mean_${phase}`] = vals.length > 0 ? calcMean(vals).toFixed(4) : '';
+            });
+            rows.push(row);
+          });
+        });
+        return rows;
+      };
+
+      const emgPhases = ['Down_Bow', 'Up_Bow', 'Overall'];
+      const anglePhases = ['Start_Pos', 'Peak_Pos', 'End_Pos', 'ROM'];
+
+      const openStringEmgRows = buildPerformanceRows('taskOpenStringData', emgPhases, 'Condition_Muscle');
+      if (openStringEmgRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(openStringEmgRows), "OpenString_EMG");
+      }
+      const openStringAngleRows = buildPerformanceRows('taskOpenStringAngleData', anglePhases, 'Condition_Channel');
+      if (openStringAngleRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(openStringAngleRows), "OpenString_Angles");
+      }
+      const scaleEmgRows = buildPerformanceRows('taskScaleData', emgPhases, 'Condition_Muscle');
+      if (scaleEmgRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scaleEmgRows), "Scale_EMG");
+      }
+      const scaleAngleRows = buildPerformanceRows('taskScaleAngleData', anglePhases, 'Condition_Channel');
+      if (scaleAngleRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scaleAngleRows), "Scale_Angles");
+      }
+
+      // Summary (跨所有受測者，MVIC 與舉手任務)
       const summaryRows = [];
       Object.entries(subjects).forEach(([subjectId, subjData]) => {
-        let hasAnyData = false; 
+        let hasAnyData = false;
         const subjRows = MUSCLE_LIST.map(muscle => {
           const liftTrials = subjData.taskLiftEmgData[muscle] || [];
           const allLiftVals = [];
           liftTrials.forEach(t => {
-             ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30'].forEach(p => { 
-               if (t[p] !== undefined && t[p] !== '') allLiftVals.push(t[p]); 
+             ['Up_30-60', 'Up_60-90', 'Up_90-120', 'Down_120-90', 'Down_90-60', 'Down_60-30'].forEach(p => {
+               if (t[p] !== undefined && t[p] !== '') allLiftVals.push(t[p]);
              });
           });
 
           const mvicTrials = subjData.mvicData[muscle] || [];
           const mvicMeanVal = mvicTrials.length > 0 ? calcMean(mvicTrials) : null;
           const mvicMean = (mvicMeanVal !== null && mvicMeanVal > 0) ? mvicMeanVal : null;
-          
+
           const liftMean = allLiftVals.length > 0 ? calcMean(allLiftVals).toFixed(4) : '';
           const liftMeanPct = (liftMean !== '' && mvicMean !== null) ? ((liftMean / mvicMean) * 100).toFixed(2) + '%' : '';
-          
-          const openStringVal = subjData.taskOpenStringData[muscle]?.[0] || '';
-          const openStringPct = (openStringVal !== '' && mvicMean !== null) ? ((openStringVal / mvicMean) * 100).toFixed(2) + '%' : '';
-          
-          const scaleVal = subjData.taskScaleData[muscle]?.[0] || '';
-          const scalePct = (scaleVal !== '' && mvicMean !== null) ? ((scaleVal / mvicMean) * 100).toFixed(2) + '%' : '';
-          
-          const musicVal = subjData.taskMusicData[muscle]?.[0] || '';
-          const musicPct = (musicVal !== '' && mvicMean !== null) ? ((musicVal / mvicMean) * 100).toFixed(2) + '%' : '';
-          
-          if (mvicMean !== null || liftMean !== '' || openStringVal !== '' || scaleVal !== '' || musicVal !== '') hasAnyData = true;
+
+          if (mvicMean !== null || liftMean !== '') hasAnyData = true;
 
           return {
             Subject: subjectId,
             Muscle: muscle,
             MVIC_Mean: mvicMean !== null ? mvicMean.toFixed(4) : '',
             Lift_Overall_Avg_RMS: liftMean,
-            'Lift_Overall_%MVIC': liftMeanPct,
-            OpenString_RMS: openStringVal,
-            'OpenString_%MVIC': openStringPct,
-            Scale_RMS: scaleVal,
-            'Scale_%MVIC': scalePct,
-            Music_RMS: musicVal,
-            'Music_%MVIC': musicPct
+            'Lift_Overall_%MVIC': liftMeanPct
           };
         });
         if (hasAnyData) summaryRows.push(...subjRows);
       });
-      
+
       if (summaryRows.length > 0) {
         const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
         XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
@@ -2882,20 +4962,35 @@ const App = () => {
     case 'mvic': return <MvicAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} mvicData={mvicData} setMvicData={setMvicData} />;
     case 'result_mvic': return <MvicDatabase activeSubjectId={activeSubjectId} mvicData={mvicData} setMvicData={setMvicData} onBack={() => setCurrentView('home')} />;
     case 'task_lift': return <LiftingAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData} taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData} />;
-    case 'task_openstring': return <ModulePlaceholder title="空弦分析" description="Open String Task Analysis" icon={<Music size={32} />} onBack={() => setCurrentView('home')} />;
-    case 'task_scale': return <ModulePlaceholder title="音階分析" description="Scale Task Analysis" icon={<ListMusic size={32} />} onBack={() => setCurrentView('home')} />;
+    case 'task_openstring':
+      return <OpenStringAnalysis
+               activeSubjectId={activeSubjectId}
+               onBack={() => setCurrentView('home')}
+               taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
+               taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
+             />;
+    case 'task_scale':
+      return <ScaleAnalysis
+               activeSubjectId={activeSubjectId}
+               onBack={() => setCurrentView('home')}
+               taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
+               taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
+             />;
     case 'task_music': return <ModulePlaceholder title="樂曲分析" description="Musical Piece Task Analysis" icon={<PlaySquare size={32} />} onBack={() => setCurrentView('home')} />;
     case 'result_overview':
       return <GlobalDatabaseOverview subjects={subjects} setSubjects={setSubjects} activeSubjectId={activeSubjectId} setActiveSubjectId={setActiveSubjectId} onBack={() => setCurrentView('home')} />;
-    case 'result_task': 
-      return <TaskDatabase 
+    case 'result_task':
+      return <TaskDatabase
                activeSubjectId={activeSubjectId}
-               onBack={() => setCurrentView('home')} 
-               taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData} 
-               taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData} 
+               onBack={() => setCurrentView('home')}
+               taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData}
+               taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData}
                taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
+               taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
                taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
+               taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
                taskMusicData={taskMusicData} setTaskMusicData={setTaskMusicData}
+               taskMusicAngleData={taskMusicAngleData} setTaskMusicAngleData={setTaskMusicAngleData}
              />;
     default: return renderHome();
   }
