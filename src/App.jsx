@@ -4390,7 +4390,7 @@ const ModulePlaceholder = ({ title, icon, description, onBack }) => (
 );
 
 // --- 所有個案總覽 (Global Overview) 模組 ---
-const GlobalDatabaseOverview = ({ subjects, setSubjects, activeSubjectId, setActiveSubjectId, onBack }) => {
+const GlobalDatabaseOverview = ({ subjects, setSubjects, activeSubjectId, setActiveSubjectId, onRenameSubject, onBack }) => {
   const getMvicProgress = (mvicData) => {
     let full = 0;
     let partial = 0;
@@ -4496,6 +4496,9 @@ const GlobalDatabaseOverview = ({ subjects, setSubjects, activeSubjectId, setAct
                             切換至此個案
                           </button>
                         )}
+                        <button onClick={() => onRenameSubject(id)} className="p-2 text-indigo-500 hover:bg-indigo-100 rounded-lg transition-colors" title="修改受測者名稱">
+                          <Edit2 size={16} />
+                        </button>
                         <button onClick={() => handleDelete(id)} className="p-2 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors" title="刪除此受測者">
                           <Trash2 size={16} />
                         </button>
@@ -4558,6 +4561,36 @@ const App = () => {
   });
 
   const [newSubjectName, setNewSubjectName] = useState('');
+  const [renameModal, setRenameModal] = useState({ isOpen: false, targetId: '', value: '' });
+
+  const openRenameModal = (id) => {
+    setRenameModal({ isOpen: true, targetId: id, value: id });
+  };
+
+  const closeRenameModal = () => {
+    setRenameModal({ isOpen: false, targetId: '', value: '' });
+  };
+
+  const confirmRename = () => {
+    const oldId = renameModal.targetId;
+    const newId = renameModal.value.trim();
+    if (!newId || newId === oldId) { closeRenameModal(); return; }
+    if (subjects[newId]) {
+      alert("此受測者編號已存在！");
+      return;
+    }
+    setSubjects(prev => {
+      const newSubjects = {};
+      Object.entries(prev).forEach(([key, val]) => {
+        newSubjects[key === oldId ? newId : key] = val;
+      });
+      return newSubjects;
+    });
+    if (activeSubjectId === oldId) {
+      setActiveSubjectId(newId);
+    }
+    closeRenameModal();
+  };
 
   // 監聽並自動儲存至 localStorage
   useEffect(() => {
@@ -4856,13 +4889,20 @@ const App = () => {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-            <select 
-              value={activeSubjectId} 
-              onChange={(e) => setActiveSubjectId(e.target.value)} 
+            <select
+              value={activeSubjectId}
+              onChange={(e) => setActiveSubjectId(e.target.value)}
               className="w-full sm:w-auto px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl font-bold text-indigo-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm"
             >
               {Object.keys(subjects).map(id => <option key={id} value={id}>受測者: {id}</option>)}
             </select>
+            <button
+              onClick={() => openRenameModal(activeSubjectId)}
+              className="p-2.5 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 rounded-xl text-indigo-600 transition-all shrink-0 shadow-sm"
+              title="修改目前受測者名稱"
+            >
+              <Edit2 size={18} />
+            </button>
             <div className="flex items-center w-full sm:w-auto gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-200 transition-all">
               <input 
                 type="text" 
@@ -4957,43 +4997,73 @@ const App = () => {
     </div>
   );
 
-  switch (currentView) {
-    case 'home': return renderHome();
-    case 'mvic': return <MvicAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} mvicData={mvicData} setMvicData={setMvicData} />;
-    case 'result_mvic': return <MvicDatabase activeSubjectId={activeSubjectId} mvicData={mvicData} setMvicData={setMvicData} onBack={() => setCurrentView('home')} />;
-    case 'task_lift': return <LiftingAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData} taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData} />;
-    case 'task_openstring':
-      return <OpenStringAnalysis
-               activeSubjectId={activeSubjectId}
-               onBack={() => setCurrentView('home')}
-               taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
-               taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
-             />;
-    case 'task_scale':
-      return <ScaleAnalysis
-               activeSubjectId={activeSubjectId}
-               onBack={() => setCurrentView('home')}
-               taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
-               taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
-             />;
-    case 'task_music': return <ModulePlaceholder title="樂曲分析" description="Musical Piece Task Analysis" icon={<PlaySquare size={32} />} onBack={() => setCurrentView('home')} />;
-    case 'result_overview':
-      return <GlobalDatabaseOverview subjects={subjects} setSubjects={setSubjects} activeSubjectId={activeSubjectId} setActiveSubjectId={setActiveSubjectId} onBack={() => setCurrentView('home')} />;
-    case 'result_task':
-      return <TaskDatabase
-               activeSubjectId={activeSubjectId}
-               onBack={() => setCurrentView('home')}
-               taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData}
-               taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData}
-               taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
-               taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
-               taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
-               taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
-               taskMusicData={taskMusicData} setTaskMusicData={setTaskMusicData}
-               taskMusicAngleData={taskMusicAngleData} setTaskMusicAngleData={setTaskMusicAngleData}
-             />;
-    default: return renderHome();
-  }
+  const renderRoutedView = () => {
+    switch (currentView) {
+      case 'home': return renderHome();
+      case 'mvic': return <MvicAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} mvicData={mvicData} setMvicData={setMvicData} />;
+      case 'result_mvic': return <MvicDatabase activeSubjectId={activeSubjectId} mvicData={mvicData} setMvicData={setMvicData} onBack={() => setCurrentView('home')} />;
+      case 'task_lift': return <LiftingAnalysis activeSubjectId={activeSubjectId} onBack={() => setCurrentView('home')} taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData} taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData} />;
+      case 'task_openstring':
+        return <OpenStringAnalysis
+                 activeSubjectId={activeSubjectId}
+                 onBack={() => setCurrentView('home')}
+                 taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
+                 taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
+               />;
+      case 'task_scale':
+        return <ScaleAnalysis
+                 activeSubjectId={activeSubjectId}
+                 onBack={() => setCurrentView('home')}
+                 taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
+                 taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
+               />;
+      case 'task_music': return <ModulePlaceholder title="樂曲分析" description="Musical Piece Task Analysis" icon={<PlaySquare size={32} />} onBack={() => setCurrentView('home')} />;
+      case 'result_overview':
+        return <GlobalDatabaseOverview subjects={subjects} setSubjects={setSubjects} activeSubjectId={activeSubjectId} setActiveSubjectId={setActiveSubjectId} onRenameSubject={openRenameModal} onBack={() => setCurrentView('home')} />;
+      case 'result_task':
+        return <TaskDatabase
+                 activeSubjectId={activeSubjectId}
+                 onBack={() => setCurrentView('home')}
+                 taskLiftEmgData={taskLiftEmgData} setTaskLiftEmgData={setTaskLiftEmgData}
+                 taskLiftAngleData={taskLiftAngleData} setTaskLiftAngleData={setTaskLiftAngleData}
+                 taskOpenStringData={taskOpenStringData} setTaskOpenStringData={setTaskOpenStringData}
+                 taskOpenStringAngleData={taskOpenStringAngleData} setTaskOpenStringAngleData={setTaskOpenStringAngleData}
+                 taskScaleData={taskScaleData} setTaskScaleData={setTaskScaleData}
+                 taskScaleAngleData={taskScaleAngleData} setTaskScaleAngleData={setTaskScaleAngleData}
+                 taskMusicData={taskMusicData} setTaskMusicData={setTaskMusicData}
+                 taskMusicAngleData={taskMusicAngleData} setTaskMusicAngleData={setTaskMusicAngleData}
+               />;
+      default: return renderHome();
+    }
+  };
+
+  return (
+    <>
+      {renameModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-slate-900 mb-2">修改受測者名稱</h3>
+            <p className="text-sm text-slate-600 mb-4 mt-4">
+              將 <span className="font-bold text-indigo-600">{renameModal.targetId}</span> 修改為新的編號：
+            </p>
+            <input
+              type="text"
+              value={renameModal.value}
+              onChange={e => setRenameModal(prev => ({ ...prev, value: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && confirmRename()}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-lg mb-6"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button onClick={closeRenameModal} className="px-5 py-2.5 rounded-xl text-slate-500 hover:bg-slate-100 font-bold transition-colors">取消</button>
+              <button onClick={confirmRename} className="px-5 py-2.5 rounded-xl text-white font-bold transition-colors shadow-sm bg-indigo-600 hover:bg-indigo-700">確定修改</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {renderRoutedView()}
+    </>
+  );
 };
 
 const MetricCard = ({ title, value, unit, icon }) => (
