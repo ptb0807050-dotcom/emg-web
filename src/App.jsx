@@ -19,7 +19,8 @@ const MUSCLE_LIST = [
   'L_UT', 'R_LT', 'L_LT', 'R_SA', 'L_SA'
 ];
 
-const GLOBAL_EMG_MAPPINGS = [
+// 舊通道設定 (含頸部 SCM/CE 肌電與頸部運動學，13 通道版)
+const EMG_CH_MAP_OLD = [
   { key: 'R_SCM', ch: 'CH1',  side: 'Right', color: 'indigo' },
   { key: 'R_UT',  ch: 'CH2',  side: 'Right', color: 'indigo' },
   { key: 'R_LT',  ch: 'CH3',  side: 'Right', color: 'indigo' },
@@ -32,52 +33,80 @@ const GLOBAL_EMG_MAPPINGS = [
   { key: 'L_SCM', ch: 'CH13', side: 'Left',  color: 'emerald' }
 ];
 
-const SIDE_MAPPINGS = {
-  Right: {
-    emg: GLOBAL_EMG_MAPPINGS.filter(m => m.side === 'Right').map(m => ({
-      key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
-    })),
-    kin: [
-      { key: 'RScapUpDownRotation', label: 'RScapUpDownRotation', regex: /RScapUpDownRotation|RScapUpDown/i },
-      { key: 'RScapAntPosTilt', label: 'RScapAntPosTilt', regex: /RScapAntPosTilt|RScapAntPos/i },
-      { key: 'RScapIntExtRotation', label: 'RScapIntExtRotation', regex: /RScapIntExtRotation|RScapIntExt/i },
-      { key: '[Right] CervicalF./E.', label: '[Right] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
-      { key: '[Right] CervicalRot.', label: '[Right] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
-      { key: '[Right] CervicalSB.', label: '[Right] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
-    ]
-  },
-  Left: {
-    emg: GLOBAL_EMG_MAPPINGS.filter(m => m.side === 'Left').map(m => ({
-      key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
-    })),
-    kin: [
-      { key: 'LScapUpDownRotation', label: 'LScapUpDownRotation', regex: /LScapUpDownRotation|LScapUpDown/i },
-      { key: 'LScapAntPosTilt', label: 'LScapAntPosTilt', regex: /LScapAntPosTilt|LScapAntPos/i },
-      { key: 'LScapIntExtRotation', label: 'LScapIntExtRotation', regex: /LScapIntExtRotation|LScapIntExt/i },
-      { key: '[Left] CervicalF./E.', label: '[Left] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
-      { key: '[Left] CervicalRot.', label: '[Left] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
-      { key: '[Left] CervicalSB.', label: '[Left] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
-    ]
-  }
+// 新通道設定 (無頸部肌電，僅斜方肌/前鋸肌 6 通道版)
+const EMG_CH_MAP_NEW = [
+  { key: 'R_SA', ch: 'CH1',  side: 'Right', color: 'indigo' },
+  { key: 'R_LT', ch: 'CH2',  side: 'Right', color: 'indigo' },
+  { key: 'L_UT', ch: 'CH3',  side: 'Left',  color: 'emerald' },
+  { key: 'R_UT', ch: 'CH9',  side: 'Right', color: 'indigo' },
+  { key: 'L_LT', ch: 'CH10', side: 'Left',  color: 'emerald' },
+  { key: 'L_SA', ch: 'CH11', side: 'Left',  color: 'emerald' }
+];
+
+const getEmgChannelMap = (settingMode) => settingMode === 'old' ? EMG_CH_MAP_OLD : EMG_CH_MAP_NEW;
+
+// 雙側肩胛運動學 (新舊設定共用)
+const SCAP_KIN_RIGHT = [
+  { key: 'RScapUpDownRotation', label: 'RScapUpDownRotation', regex: /RScapUpDownRotation|RScapUpDown/i },
+  { key: 'RScapAntPosTilt', label: 'RScapAntPosTilt', regex: /RScapAntPosTilt|RScapAntPos/i },
+  { key: 'RScapIntExtRotation', label: 'RScapIntExtRotation', regex: /RScapIntExtRotation|RScapIntExt/i }
+];
+const SCAP_KIN_LEFT = [
+  { key: 'LScapUpDownRotation', label: 'LScapUpDownRotation', regex: /LScapUpDownRotation|LScapUpDown/i },
+  { key: 'LScapAntPosTilt', label: 'LScapAntPosTilt', regex: /LScapAntPosTilt|LScapAntPos/i },
+  { key: 'LScapIntExtRotation', label: 'LScapIntExtRotation', regex: /LScapIntExtRotation|LScapIntExt/i }
+];
+// 頸部運動學 (僅舊設定收集)
+const CERVICAL_KIN_RIGHT = [
+  { key: '[Right] CervicalF./E.', label: '[Right] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
+  { key: '[Right] CervicalRot.', label: '[Right] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
+  { key: '[Right] CervicalSB.', label: '[Right] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
+];
+const CERVICAL_KIN_LEFT = [
+  { key: '[Left] CervicalF./E.', label: '[Left] CervicalF./E.', regex: /CervicalF\.?\/E\.|CervicalF/i },
+  { key: '[Left] CervicalRot.', label: '[Left] CervicalRot.', regex: /CervicalRot\.?|CervicalRot/i },
+  { key: '[Left] CervicalSB.', label: '[Left] CervicalSB.', regex: /CervicalSB\.?|CervicalSB/i }
+];
+
+// 單側 (舉手任務) 通道對應：依新舊設定動態產生
+const getSideMappings = (settingMode) => {
+  const emgMap = getEmgChannelMap(settingMode);
+  const toEmg = (side) => emgMap.filter(m => m.side === side).map(m => ({
+    key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
+  }));
+  return {
+    Right: { emg: toEmg('Right'), kin: settingMode === 'old' ? [...SCAP_KIN_RIGHT, ...CERVICAL_KIN_RIGHT] : SCAP_KIN_RIGHT },
+    Left: { emg: toEmg('Left'), kin: settingMode === 'old' ? [...SCAP_KIN_LEFT, ...CERVICAL_KIN_LEFT] : SCAP_KIN_LEFT }
+  };
 };
 
-// 專屬演奏任務的雙側與頸部通道映射
-const OPEN_STRING_MAPPINGS = {
-  emg: GLOBAL_EMG_MAPPINGS.map(m => ({
-    key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
-  })),
-  kin: [
-    { key: 'RScapUpDown', label: 'R Scap Up/Down', regex: /RScapUpDownRotation|RScapUpDown/i },
-    { key: 'RScapAntPos', label: 'R Scap Ant/Pos', regex: /RScapAntPosTilt|RScapAntPos/i },
-    { key: 'RScapIntExt', label: 'R Scap Int/Ext', regex: /RScapIntExtRotation|RScapIntExt/i },
-    { key: 'LScapUpDown', label: 'L Scap Up/Down', regex: /LScapUpDownRotation|LScapUpDown/i },
-    { key: 'LScapAntPos', label: 'L Scap Ant/Pos', regex: /LScapAntPosTilt|LScapAntPos/i },
-    { key: 'LScapIntExt', label: 'L Scap Int/Ext', regex: /LScapIntExtRotation|LScapIntExt/i },
-    { key: 'Cervical_FE', label: 'Cervical F./E.', regex: /Cervical\s*F\.?\/E\.|Cervical\s*F/i },
-    { key: 'Cervical_Rot', label: 'Cervical Rot.', regex: /Cervical\s*Rot\.?/i },
-    { key: 'Cervical_SB', label: 'Cervical SB.', regex: /Cervical\s*SB\.?/i },
-    { key: 'RHTPlaneOfElev', label: 'R HT Plane of Elev', regex: /RHTPlaneOfElev|RHTPlane/i }
-  ]
+// 雙側肩胛運動學 (演奏任務用標籤，與 SCAP_KIN_* 對應同樣的通道但標籤不同)
+const BILATERAL_SCAP_KIN = [
+  { key: 'RScapUpDown', label: 'R Scap Up/Down', regex: /RScapUpDownRotation|RScapUpDown/i },
+  { key: 'RScapAntPos', label: 'R Scap Ant/Pos', regex: /RScapAntPosTilt|RScapAntPos/i },
+  { key: 'RScapIntExt', label: 'R Scap Int/Ext', regex: /RScapIntExtRotation|RScapIntExt/i },
+  { key: 'LScapUpDown', label: 'L Scap Up/Down', regex: /LScapUpDownRotation|LScapUpDown/i },
+  { key: 'LScapAntPos', label: 'L Scap Ant/Pos', regex: /LScapAntPosTilt|LScapAntPos/i },
+  { key: 'LScapIntExt', label: 'L Scap Int/Ext', regex: /LScapIntExtRotation|LScapIntExt/i }
+];
+const BILATERAL_CERVICAL_KIN = [
+  { key: 'Cervical_FE', label: 'Cervical F./E.', regex: /Cervical\s*F\.?\/E\.|Cervical\s*F/i },
+  { key: 'Cervical_Rot', label: 'Cervical Rot.', regex: /Cervical\s*Rot\.?/i },
+  { key: 'Cervical_SB', label: 'Cervical SB.', regex: /Cervical\s*SB\.?/i }
+];
+const BILATERAL_RHT_KIN = { key: 'RHTPlaneOfElev', label: 'R HT Plane of Elev', regex: /RHTPlaneOfElev|RHTPlane/i };
+
+// 專屬演奏任務的雙側通道映射：依新舊設定動態產生 (新設定不含頸部運動學)
+const getOpenStringMappings = (settingMode) => {
+  const emgMap = getEmgChannelMap(settingMode);
+  return {
+    emg: emgMap.map(m => ({
+      key: m.key, label: `${m.ch} (${m.key})`, regex: new RegExp(`${m.ch}\\b|${m.key}`, 'i')
+    })),
+    kin: settingMode === 'old'
+      ? [...BILATERAL_SCAP_KIN, ...BILATERAL_CERVICAL_KIN, BILATERAL_RHT_KIN]
+      : [...BILATERAL_SCAP_KIN, BILATERAL_RHT_KIN]
+  };
 };
 
 // --- 動態載入 Excel (SheetJS) 函式庫 ---
@@ -804,6 +833,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   const [toastMessage, setToastMessage] = useState(null);
 
   const [taskSide, setTaskSide] = useState('Right');
+  const [settingMode, setSettingMode] = useState('new');
   const [emgMapping, setEmgMapping] = useState({});
   const [kinMapping, setKinMapping] = useState({});
   
@@ -833,22 +863,30 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
   const [selectedRepIdx, setSelectedRepIdx] = useState(0);
   const [draggingMarker, setDraggingMarker] = useState(null);
 
-  const autoMap = useCallback((side, eHeaders, kHeaders) => {
+  const autoMap = useCallback((side, eHeaders, kHeaders, mode = settingMode) => {
+    const sideMap = getSideMappings(mode)[side];
     const eMap = {};
-    SIDE_MAPPINGS[side].emg.forEach(m => {
+    sideMap.emg.forEach(m => {
       const idx = eHeaders.findIndex(h => m.regex.test(h));
       eMap[m.key] = idx !== -1 ? idx : -1;
     });
     const kMap = {};
-    SIDE_MAPPINGS[side].kin.forEach(m => {
+    sideMap.kin.forEach(m => {
       const idx = kHeaders.findIndex(h => m.regex.test(h));
       kMap[m.key] = idx !== -1 ? idx : -1;
     });
     setEmgMapping(eMap);
     setKinMapping(kMap);
-    setPreviewEmgKey(SIDE_MAPPINGS[side].emg[0].key);
-    setPreviewKinKey(SIDE_MAPPINGS[side].kin[0].key);
-  }, []);
+    setPreviewEmgKey(sideMap.emg[0].key);
+    setPreviewKinKey(sideMap.kin[0].key);
+  }, [settingMode]);
+
+  const handleSettingModeChange = (mode) => {
+    setSettingMode(mode);
+    if (emgHeaders.length > 0 || kinHeaders.length > 0) {
+      autoMap(taskSide, emgHeaders, kinHeaders, mode);
+    }
+  };
 
   const handleEmgUpload = (event) => {
     const file = event.target.files[0];
@@ -1368,20 +1406,26 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-slate-200 pb-3 gap-3">
                 <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Layers size={16} className="text-indigo-500" /> 批次分析通道對應 (Batch Mapping)</h4>
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                   <span className="text-xs font-bold text-slate-600">測試側別 (Task Side):</span>
-                   <select value={taskSide} onChange={e => { setTaskSide(e.target.value); autoMap(e.target.value, emgHeaders, kinHeaders); }} className="font-bold text-xs bg-transparent text-indigo-700 outline-none cursor-pointer">
-                      <option value="Right">右手任務 (Right Side)</option>
-                      <option value="Left">左手任務 (Left Side)</option>
-                   </select>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl">
+                    <button onClick={() => handleSettingModeChange('old')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'old' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>舊設定 (含頸部)</button>
+                    <button onClick={() => handleSettingModeChange('new')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'new' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>新設定 (無頸部)</button>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                     <span className="text-xs font-bold text-slate-600">測試側別 (Task Side):</span>
+                     <select value={taskSide} onChange={e => { setTaskSide(e.target.value); autoMap(e.target.value, emgHeaders, kinHeaders); }} className="font-bold text-xs bg-transparent text-indigo-700 outline-none cursor-pointer">
+                        <option value="Right">右手任務 (Right Side)</option>
+                        <option value="Left">左手任務 (Left Side)</option>
+                     </select>
+                  </div>
                 </div>
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                   <h5 className={`text-xs font-bold ${taskSide === 'Right' ? 'text-indigo-600' : 'text-emerald-600'} mb-2 flex items-center gap-1`}><Activity size={14}/> EMG 肌肉對應 (自動抓取 5 通道)</h5>
+                   <h5 className={`text-xs font-bold ${taskSide === 'Right' ? 'text-indigo-600' : 'text-emerald-600'} mb-2 flex items-center gap-1`}><Activity size={14}/> EMG 肌肉對應 (自動抓取 {getSideMappings(settingMode)[taskSide].emg.length} 通道)</h5>
                    <div className="grid grid-cols-2 gap-2">
-                      {SIDE_MAPPINGS[taskSide].emg.map(m => (
+                      {getSideMappings(settingMode)[taskSide].emg.map(m => (
                          <div key={m.key} className={`flex flex-col bg-white p-2 rounded-xl border ${taskSide === 'Right' ? 'border-indigo-100' : 'border-emerald-100'} shadow-sm`}>
                             <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
                             <select value={emgMapping[m.key] ?? -1} onChange={e => setEmgMapping({...emgMapping, [m.key]: Number(e.target.value)})} className={`text-[10px] font-bold ${taskSide === 'Right' ? 'text-indigo-900 bg-indigo-50/50' : 'text-emerald-900 bg-emerald-50/50'} p-1 rounded border-none outline-none`}>
@@ -1393,9 +1437,9 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                    </div>
                 </div>
                 <div>
-                   <h5 className={`text-xs font-bold ${taskSide === 'Right' ? 'text-indigo-600' : 'text-emerald-600'} mb-2 flex items-center gap-1`}><Eye size={14}/> Kinematics 關節對應 (自動抓取 6 通道)</h5>
+                   <h5 className={`text-xs font-bold ${taskSide === 'Right' ? 'text-indigo-600' : 'text-emerald-600'} mb-2 flex items-center gap-1`}><Eye size={14}/> Kinematics 關節對應 (自動抓取 {getSideMappings(settingMode)[taskSide].kin.length} 通道)</h5>
                    <div className="grid grid-cols-2 gap-2">
-                      {SIDE_MAPPINGS[taskSide].kin.map(m => (
+                      {getSideMappings(settingMode)[taskSide].kin.map(m => (
                          <div key={m.key} className={`flex flex-col bg-white p-2 rounded-xl border ${taskSide === 'Right' ? 'border-indigo-100' : 'border-emerald-100'} shadow-sm`}>
                             <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
                             <select value={kinMapping[m.key] ?? -1} onChange={e => setKinMapping({...kinMapping, [m.key]: Number(e.target.value)})} className={`text-[10px] font-bold ${taskSide === 'Right' ? 'text-indigo-900 bg-indigo-50/50' : 'text-emerald-900 bg-emerald-50/50'} p-1 rounded border-none outline-none`}>
@@ -1449,7 +1493,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                       <p className="text-xs text-indigo-600 font-medium mt-1">下拉切換欲預覽之肌肉 (全部肌肉都會在點擊儲存時寫入)</p>
                     </div>
                     <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-indigo-300 bg-white font-bold text-indigo-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {SIDE_MAPPINGS[taskSide].emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getSideMappings(settingMode)[taskSide].emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   
@@ -1474,7 +1518,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                       <p className="text-xs text-emerald-600 font-medium mt-1">包含 120° 角度點</p>
                     </div>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {SIDE_MAPPINGS[taskSide].kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getSideMappings(settingMode)[taskSide].kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   
@@ -1527,7 +1571,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                     onChange={e => setPreviewEmgKey(e.target.value)} 
                     className="px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 font-bold text-indigo-800 text-xs focus:outline-none shadow-sm cursor-pointer"
                   >
-                    {SIDE_MAPPINGS[taskSide].emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    {getSideMappings(settingMode)[taskSide].emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                   <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
                 </div>
@@ -1578,7 +1622,7 @@ const LiftingAnalysis = ({ activeSubjectId, onBack, taskLiftEmgData, setTaskLift
                       onChange={e => setPreviewKinKey(e.target.value)} 
                       className="px-3 py-1 rounded-lg border border-emerald-200 bg-emerald-50 font-bold text-emerald-800 text-xs focus:outline-none shadow-sm cursor-pointer"
                     >
-                      {SIDE_MAPPINGS[taskSide].kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getSideMappings(settingMode)[taskSide].kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                     <p className="text-xs font-bold text-slate-400 ml-1">與主判定基準 (Main Angle)</p>
                   </div>
@@ -1675,16 +1719,25 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
   const [manualBaseEnd, setManualBaseEnd] = useState(null);
   const [isSelectingBase, setIsSelectingBase] = useState(false);
 
+  const [settingMode, setSettingMode] = useState('new');
+
   // 用來自動配對目標肌肉的邏輯
-  const autoSelectMuscle = useCallback((headerName) => {
-    for (let m of GLOBAL_EMG_MAPPINGS) {
+  const autoSelectMuscle = useCallback((headerName, mode = settingMode) => {
+    for (let m of getEmgChannelMap(mode)) {
       const regex = new RegExp(`${m.ch}\\b|${m.key}`, 'i');
       if (regex.test(headerName)) {
         setSaveTarget(m.key);
         break;
       }
     }
-  }, []);
+  }, [settingMode]);
+
+  const handleSettingModeChange = (mode) => {
+    setSettingMode(mode);
+    if (headers.length > 0) {
+      autoSelectMuscle(headers[selectedColumnIndex] || '', mode);
+    }
+  };
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -2080,9 +2133,15 @@ const MvicAnalysis = ({ activeSubjectId, onBack, mvicData, setMvicData }) => {
 
         {/* 通道對應提示 */}
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-sm mb-4">
-          <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1"><Info size={14}/> 肌肉通道對應參考 (Channel Mapping)</h4>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1"><Info size={14}/> 肌肉通道對應參考 (Channel Mapping)</h4>
+            <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl">
+              <button onClick={() => handleSettingModeChange('old')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'old' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>舊設定 (含頸部 13ch)</button>
+              <button onClick={() => handleSettingModeChange('new')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'new' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>新設定 (無頸部 6ch)</button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px] font-bold text-slate-600">
-            {GLOBAL_EMG_MAPPINGS.map(m => (
+            {getEmgChannelMap(settingMode).map(m => (
               <div key={m.key} className={`bg-white px-2 py-1.5 rounded border ${m.side === 'Right' ? 'border-indigo-200' : 'border-emerald-200'} shadow-sm flex justify-between`}>
                 <span>{m.ch}</span>
                 <span className={m.side === 'Right' ? 'text-indigo-600' : 'text-emerald-600'}>{m.key}</span>
@@ -2460,28 +2519,38 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
   const [selectedRepIdx, setSelectedRepIdx] = useState(0);
   const [draggingMarker, setDraggingMarker] = useState(null);
 
-  const autoMap = useCallback((eHeaders, kHeaders) => {
+  const [settingMode, setSettingMode] = useState('new');
+
+  const autoMap = useCallback((eHeaders, kHeaders, mode = settingMode) => {
+    const currentMappings = getOpenStringMappings(mode);
     const eMap = {};
-    OPEN_STRING_MAPPINGS.emg.forEach(m => {
+    currentMappings.emg.forEach(m => {
       const idx = eHeaders.findIndex(h => m.regex.test(h));
       eMap[m.key] = idx !== -1 ? idx : -1;
     });
     const kMap = {};
-    OPEN_STRING_MAPPINGS.kin.forEach(m => {
+    currentMappings.kin.forEach(m => {
       const idx = kHeaders.findIndex(h => m.regex.test(h));
       kMap[m.key] = idx !== -1 ? idx : -1;
     });
 
     setEmgMapping(eMap);
     setKinMapping(kMap);
-    setPreviewEmgKey(OPEN_STRING_MAPPINGS.emg[0].key);
-    setPreviewKinKey(OPEN_STRING_MAPPINGS.kin[0].key);
+    setPreviewEmgKey(currentMappings.emg[0].key);
+    setPreviewKinKey(currentMappings.kin[0].key);
 
     const rhtIdx = kHeaders.findIndex(h => /RHTPlaneOfElev|RHTPlane|Plane of Elev/i.test(h));
     if (rhtIdx !== -1) {
         setKinAngleColIdx(rhtIdx);
     }
-  }, []);
+  }, [settingMode]);
+
+  const handleSettingModeChange = (mode) => {
+    setSettingMode(mode);
+    if (emgHeaders.length > 0 || kinHeaders.length > 0) {
+      autoMap(emgHeaders, kinHeaders, mode);
+    }
+  };
 
   const handleEmgUpload = (event) => {
     const file = event.target.files[0];
@@ -2969,7 +3038,7 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
 
   const currentConditionLabel = `${speedType}_${stringType}`;
   const currentSavedCount = Object.keys(taskOpenStringAngleData).length > 0
-    ? (taskOpenStringAngleData[`${previewKinKey || OPEN_STRING_MAPPINGS.kin[0].key} (${currentConditionLabel})`]?.length || 0)
+    ? (taskOpenStringAngleData[`${previewKinKey || getOpenStringMappings(settingMode).kin[0].key} (${currentConditionLabel})`]?.length || 0)
     : 0;
 
   const currentMetrics = analysisResult?.cycles[selectedRepIdx];
@@ -3140,14 +3209,20 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-slate-200 pb-3 gap-3">
                 <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Layers size={16} className="text-indigo-500" /> 雙側通道對應 (Bilateral Mapping)</h4>
-                <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對頸部/雙側肩膀及所有肌肉。</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl">
+                    <button onClick={() => handleSettingModeChange('old')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'old' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>舊設定 (含頸部)</button>
+                    <button onClick={() => handleSettingModeChange('new')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'new' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>新設定 (無頸部)</button>
+                  </div>
+                  <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對{settingMode === 'old' ? '頸部/' : ''}雙側肩膀及所有肌肉。</div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 (10 通道)</h5>
+                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 ({getOpenStringMappings(settingMode).emg.length} 通道)</h5>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => (
+                      {getOpenStringMappings(settingMode).emg.map(m => (
                          <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-indigo-100 shadow-sm">
                             <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
                             <select value={emgMapping[m.key] ?? -1} onChange={e => setEmgMapping({...emgMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-indigo-900 bg-indigo-50/50 p-1 rounded border-none outline-none">
@@ -3159,9 +3234,9 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
                    </div>
                 </div>
                 <div>
-                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 (10 通道)</h5>
+                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 ({getOpenStringMappings(settingMode).kin.length} 通道)</h5>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => (
+                      {getOpenStringMappings(settingMode).kin.map(m => (
                          <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-emerald-100 shadow-sm">
                             <span className="text-[10px] font-bold text-slate-500 mb-1 line-clamp-1">{m.label}</span>
                             <select value={kinMapping[m.key] ?? -1} onChange={e => setKinMapping({...kinMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-emerald-900 bg-emerald-50/50 p-1 rounded border-none outline-none">
@@ -3215,7 +3290,7 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
                       <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2"><Eye size={18} className="text-indigo-600"/> EMG 區間預覽</h3>
                     </div>
                     <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-indigo-300 bg-white font-bold text-indigo-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mb-2 relative z-10">
@@ -3237,7 +3312,7 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
                       <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2"><Eye size={18} className="text-emerald-600"/> 觀察關節預覽</h3>
                     </div>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-4 gap-2 mb-2 relative z-10">
@@ -3327,7 +3402,7 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
                   <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-indigo-400">
                     <p className="text-xs font-bold text-slate-500">EMG 圖表預覽通道:</p>
                     <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 font-bold text-indigo-800 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                     <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
                   </div>
@@ -3369,7 +3444,7 @@ const OpenStringAnalysis = ({ activeSubjectId, onBack, taskOpenStringData, setTa
                   <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-amber-500">
                     <p className="text-xs font-bold text-slate-500">Kinematic 觀察角度:</p>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1 rounded-lg border border-emerald-200 bg-emerald-50 font-bold text-emerald-800 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="h-[280px] w-full select-none" draggable={false}>
@@ -3470,28 +3545,38 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
   const [selectedRepIdx, setSelectedRepIdx] = useState(0);
   const [draggingMarker, setDraggingMarker] = useState(null);
 
-  const autoMap = useCallback((eHeaders, kHeaders) => {
+  const [settingMode, setSettingMode] = useState('new');
+
+  const autoMap = useCallback((eHeaders, kHeaders, mode = settingMode) => {
+    const currentMappings = getOpenStringMappings(mode);
     const eMap = {};
-    OPEN_STRING_MAPPINGS.emg.forEach(m => {
+    currentMappings.emg.forEach(m => {
       const idx = eHeaders.findIndex(h => m.regex.test(h));
       eMap[m.key] = idx !== -1 ? idx : -1;
     });
     const kMap = {};
-    OPEN_STRING_MAPPINGS.kin.forEach(m => {
+    currentMappings.kin.forEach(m => {
       const idx = kHeaders.findIndex(h => m.regex.test(h));
       kMap[m.key] = idx !== -1 ? idx : -1;
     });
 
     setEmgMapping(eMap);
     setKinMapping(kMap);
-    setPreviewEmgKey(OPEN_STRING_MAPPINGS.emg[0].key);
-    setPreviewKinKey(OPEN_STRING_MAPPINGS.kin[0].key);
+    setPreviewEmgKey(currentMappings.emg[0].key);
+    setPreviewKinKey(currentMappings.kin[0].key);
 
     const rhtIdx = kHeaders.findIndex(h => /RHTPlaneOfElev|RHTPlane|Plane of Elev/i.test(h));
     if (rhtIdx !== -1) {
         setKinAngleColIdx(rhtIdx);
     }
-  }, []);
+  }, [settingMode]);
+
+  const handleSettingModeChange = (mode) => {
+    setSettingMode(mode);
+    if (emgHeaders.length > 0 || kinHeaders.length > 0) {
+      autoMap(emgHeaders, kinHeaders, mode);
+    }
+  };
 
   const handleEmgUpload = (event) => {
     const file = event.target.files[0];
@@ -3938,7 +4023,7 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
 
   const currentConditionLabel = `${speedType}_${scaleType}`;
   const currentSavedCount = Object.keys(taskScaleAngleData).length > 0
-    ? (taskScaleAngleData[`${previewKinKey || OPEN_STRING_MAPPINGS.kin[0].key} (${currentConditionLabel})`]?.length || 0)
+    ? (taskScaleAngleData[`${previewKinKey || getOpenStringMappings(settingMode).kin[0].key} (${currentConditionLabel})`]?.length || 0)
     : 0;
 
   const currentMetrics = analysisResult?.cycles[selectedRepIdx];
@@ -4089,14 +4174,20 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-slate-200 pb-3 gap-3">
                 <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Layers size={16} className="text-indigo-500" /> 雙側通道對應 (Bilateral Mapping)</h4>
-                <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對頸部/雙側肩膀及所有肌肉。</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl">
+                    <button onClick={() => handleSettingModeChange('old')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'old' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>舊設定 (含頸部)</button>
+                    <button onClick={() => handleSettingModeChange('new')} className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${settingMode === 'new' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>新設定 (無頸部)</button>
+                  </div>
+                  <div className="text-[11px] text-slate-500 italic">系統已自動依照關鍵字配對{settingMode === 'old' ? '頸部/' : ''}雙側肩膀及所有肌肉。</div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 (10 通道)</h5>
+                   <h5 className="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1"><Activity size={14}/> EMG 肌肉對應 ({getOpenStringMappings(settingMode).emg.length} 通道)</h5>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => (
+                      {getOpenStringMappings(settingMode).emg.map(m => (
                          <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-indigo-100 shadow-sm">
                             <span className="text-[10px] font-bold text-slate-500 mb-1">{m.label}</span>
                             <select value={emgMapping[m.key] ?? -1} onChange={e => setEmgMapping({...emgMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-indigo-900 bg-indigo-50/50 p-1 rounded border-none outline-none">
@@ -4108,9 +4199,9 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
                    </div>
                 </div>
                 <div>
-                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 (10 通道)</h5>
+                   <h5 className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1"><Eye size={14}/> Kinematics 關節對應 ({getOpenStringMappings(settingMode).kin.length} 通道)</h5>
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => (
+                      {getOpenStringMappings(settingMode).kin.map(m => (
                          <div key={m.key} className="flex flex-col bg-white p-2 rounded-xl border border-emerald-100 shadow-sm">
                             <span className="text-[10px] font-bold text-slate-500 mb-1 line-clamp-1">{m.label}</span>
                             <select value={kinMapping[m.key] ?? -1} onChange={e => setKinMapping({...kinMapping, [m.key]: Number(e.target.value)})} className="text-[10px] font-bold text-emerald-900 bg-emerald-50/50 p-1 rounded border-none outline-none">
@@ -4164,7 +4255,7 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
                       <h3 className="font-bold text-indigo-900 text-base flex items-center gap-2"><Eye size={18} className="text-indigo-600"/> EMG 區間預覽</h3>
                     </div>
                     <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-indigo-300 bg-white font-bold text-indigo-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mb-2 relative z-10">
@@ -4186,7 +4277,7 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
                       <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2"><Eye size={18} className="text-emerald-600"/> 觀察關節預覽</h3>
                     </div>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-white font-bold text-emerald-900 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-4 gap-2 mb-2 relative z-10">
@@ -4284,7 +4375,7 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
                   <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-indigo-400">
                     <p className="text-xs font-bold text-slate-500">EMG 圖表預覽通道:</p>
                     <select value={previewEmgKey} onChange={e => setPreviewEmgKey(e.target.value)} className="px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 font-bold text-indigo-800 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).emg.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                     <p className="text-xs font-bold text-slate-400 ml-1">LPF 包絡線</p>
                   </div>
@@ -4326,7 +4417,7 @@ const ScaleAnalysis = ({ activeSubjectId, onBack, taskScaleData, setTaskScaleDat
                   <div className="flex items-center gap-3 mb-2 pl-2 border-l-2 border-amber-500">
                     <p className="text-xs font-bold text-slate-500">Kinematic 觀察角度:</p>
                     <select value={previewKinKey} onChange={e => setPreviewKinKey(e.target.value)} className="px-3 py-1 rounded-lg border border-emerald-200 bg-emerald-50 font-bold text-emerald-800 text-xs focus:outline-none shadow-sm cursor-pointer">
-                      {OPEN_STRING_MAPPINGS.kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                      {getOpenStringMappings(settingMode).kin.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
                   </div>
                   <div className="h-[280px] w-full select-none" draggable={false}>
